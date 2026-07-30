@@ -1,0 +1,22 @@
+{
+  "name": "edge-ai-sidebar",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Floating message navigator for arena.ai — vanilla Shadow DOM UI",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "test": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.0",
+    "@types/chrome": "^0.2.0",
+    "@types/node": "^24.13.2",
+    "jsdom": "^25.0.1",
+    "oxlint": "^1.69.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.0"
+  }
+}
