@@ -435,6 +435,196 @@ export function ensureStyles(shadowRoot: ShadowRoot) {
 	shadowRoot.appendChild(s);
 }
 
+// ─── Phase 10A Commit 2: Arena-native Session Library Panel ────────────────────────────────────
+
+/**
+ * Open the Session Library as an Arena-native floating panel.
+ * Appends to document.body (not Shadow DOM) so it sits naturally in the Arena DOM tree.
+ * Uses existing folder/session state from folders.ts.
+ */
+export function showArenaSessionLibraryPanel(): void {
+	showSessionLibraryInline(
+		document.body,
+		foldersState,
+		getSessionsInFolder,
+		createFolder,
+		deleteFolder,
+		renameFolder,
+		addSessionToFolder,
+		INBOX_ID,
+	);
+}
+
+/**
+ * Arena-native version of the Session Library.
+ * Renders into a given container (e.g. document.body) using Arena CSS class names.
+ */
+function showSessionLibraryInline(
+	container: ParentNode,
+	foldersState: FolderState,
+	getSessionsInFolder: (folderId: string) => Array<{ sessionId: string; title: string; folderId: string; createdAt: number; updatedAt: number }>,
+	createFolder: (name: string) => { id: string; name: string; createdAt: number; updatedAt: number } | null,
+	deleteFolder: (folderId: string) => void,
+	renameFolder: (folderId: string, newName: string) => void,
+	addSessionToFolder: (sessionId: string, title: string, folderId: string) => void,
+	INBOX_ID: string,
+) {
+	// Dismiss if already open
+	const existing = container.querySelector(".arena-slm");
+	if (existing) { existing.remove(); return; }
+
+	const overlay = document.createElement("div");
+	overlay.className = "arena-slm";
+	overlay.setAttribute("role", "dialog");
+	overlay.setAttribute("aria-label", "Session Library");
+
+	// Arena-style panel
+	overlay.innerHTML = `
+		<div class="arena-slm-backdrop" aria-hidden="true"></div>
+		<div class="arena-slm-panel">
+			<div class="arena-slm-header">
+				<span class="arena-slm-title">🗂 Session Library</span>
+				<button class="arena-slm-close" title="Close" aria-label="Close">✕</button>
+			</div>
+			<div class="arena-slm-body">
+				<div class="arena-slm-folders">
+					<div class="arena-slm-folder-list"></div>
+					<div class="arena-slm-new-folder">
+						<input class="arena-slm-input" placeholder="+ New folder…" maxlength="40" />
+					</div>
+				</div>
+				<div class="arena-slm-sessions">
+					<div class="arena-slm-session-list"></div>
+				</div>
+			</div>
+		</div>
+	`;
+
+	const close = () => overlay.remove();
+	overlay.querySelector(".arena-slm-close")!.addEventListener("click", close);
+	overlay.querySelector(".arena-slm-backdrop")!.addEventListener("click", close);
+
+	const folderList = overlay.querySelector(".arena-slm-folder-list")!;
+	const sessionList = overlay.querySelector(".arena-slm-session-list")!;
+	const folderInput = overlay.querySelector(".arena-slm-input") as HTMLInputElement;
+
+	function renderFolders() {
+		folderList.innerHTML = "";
+		foldersState.folders.forEach((folder) => {
+			const el = document.createElement("div");
+			const isActive = foldersState.activeFolderId === folder.id;
+			const isSystem = folder.id === INBOX_ID || folder.id === "archive";
+			el.className = "arena-slm-folder-item" + (isActive ? " active" : "");
+			const count = getSessionsInFolder(folder.id).length;
+
+			const nameSpan = document.createElement("span");
+			nameSpan.className = "arena-slm-folder-name";
+			nameSpan.textContent = folder.name;
+			el.appendChild(nameSpan);
+
+			const countSpan = document.createElement("span");
+			countSpan.className = "arena-slm-folder-count";
+			countSpan.textContent = String(count);
+			el.appendChild(countSpan);
+
+			if (isActive) el.classList.add("active");
+			el.addEventListener("click", () => {
+				foldersState.activeFolderId = folder.id;
+				renderFolders();
+				renderSessions();
+			});
+
+			// Rename on double-click (not for system folders)
+			if (!isSystem) {
+				el.addEventListener("dblclick", (e) => {
+					e.stopPropagation();
+					const newName = prompt("Rename folder:", folder.name);
+					if (newName?.trim()) {
+						renameFolder(folder.id, newName);
+						renderFolders();
+					}
+				});
+				const delBtn = document.createElement("button");
+				delBtn.className = "arena-slm-folder-del";
+				delBtn.textContent = "✕";
+				delBtn.title = "Delete folder";
+				delBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					const folderName = folder.name;
+					if (confirm(`Delete "${folderName}"? Sessions go to Inbox.`)) {
+						deleteFolder(folder.id);
+						if (foldersState.activeFolderId === folder.id) foldersState.activeFolderId = INBOX_ID;
+						renderFolders();
+						renderSessions();
+					}
+				});
+				el.appendChild(delBtn);
+			}
+			folderList.appendChild(el);
+		});
+	}
+
+	function renderSessions() {
+		sessionList.innerHTML = "";
+		const sessions = getSessionsInFolder(foldersState.activeFolderId);
+		if (sessions.length === 0) {
+			const empty = document.createElement("div");
+			empty.className = "arena-slm-empty";
+			empty.textContent = "No sessions";
+			sessionList.appendChild(empty);
+			return;
+		}
+		sessions.forEach((s) => {
+			const el = document.createElement("div");
+			el.className = "arena-slm-session-item";
+			const titleDiv = document.createElement("div");
+			titleDiv.className = "arena-slm-session-title";
+			titleDiv.textContent = s.title || "未命名会话";
+			el.appendChild(titleDiv);
+
+			const metaDiv = document.createElement("div");
+			metaDiv.className = "arena-slm-session-meta";
+			metaDiv.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "";
+			el.appendChild(metaDiv);
+
+			const moveBtn = document.createElement("select");
+			moveBtn.className = "arena-slm-move-select";
+			moveBtn.title = "Move to folder";
+			foldersState.folders.forEach((f) => {
+				const opt = document.createElement("option");
+				opt.value = f.id;
+				opt.textContent = f.name;
+				if (f.id === s.folderId) opt.selected = true;
+				moveBtn.appendChild(opt);
+			});
+			moveBtn.addEventListener("change", () => {
+				addSessionToFolder(s.sessionId, s.title, moveBtn.value);
+				renderSessions();
+				renderFolders();
+			});
+			el.appendChild(moveBtn);
+			sessionList.appendChild(el);
+		});
+	}
+
+	folderInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter" && folderInput.value.trim()) {
+			const folder = createFolder(folderInput.value.trim());
+			if (folder) {
+				folderInput.value = "";
+				renderFolders();
+			}
+		}
+	});
+
+	renderFolders();
+	renderSessions();
+	container.appendChild(overlay);
+
+	// Focus close on open
+	overlay.querySelector<HTMLButtonElement>(".arena-slm-close")?.focus();
+}
+
 // ─── Sprint 9: Session Library Modal ──────────────────────────────────────────────────────────
 
 type FolderState = {

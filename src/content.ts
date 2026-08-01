@@ -35,6 +35,7 @@ import {
 import { panel, fab, capture, timers, revision, cachedElements } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
 import { initFolders, ensureArenaFolderEntry } from "./folders";
+import { showArenaSessionLibraryPanel } from "./ui/panel";
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,
@@ -493,7 +494,7 @@ try {
 		initFolders(); // Sprint 9: load persisted folder data from storage
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() => ensureArenaFolderEntry(() => {
-			console.log("[AI Sidebar] session library: placeholder open");
+			showArenaSessionLibraryPanel();
 		}));
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
