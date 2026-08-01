@@ -184,6 +184,9 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 					resetSessionState();
 					rebuildForCurrentRoute();
 					isFirstRender = true; // route change → next render should be immediate
+					// Phase 10A: re-inject Arena sidebar entries on route change
+					ensureArenaFolderEntry(() => showArenaSessionLibraryPanel());
+					setupHistoryContextMenu();
 				}
 				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
 				if (isFirstRender) {
