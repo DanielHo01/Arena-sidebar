@@ -332,7 +332,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		row.style.cssText =
 			"display: flex; align-items: center; justify-content: space-between;" +
 			"padding: 5px 6px; border-radius: 5px; cursor: pointer;" +
-			"font-size: 12px; color: #e2e8f0;" +
+			"font-size: 12px; color: #000000;" +
 			"transition: background 0.08s;";
 		if (isActive) {
 			row.style.background = "rgba(77,124,255,0.15)";
@@ -348,7 +348,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		const count = document.createElement("span");
 		count.textContent = String(getSessionsInFolder(folder.id).length);
 		count.style.cssText =
-			"font-size: 10px; color: #94a3b8; margin-left: 4px; flex-shrink: 0;";
+			"font-size: 10px; color: #374151; margin-left: 4px; flex-shrink: 0;";
 		row.appendChild(count);
 
 		row.addEventListener("click", () => {
@@ -369,7 +369,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		"width: 100%; box-sizing: border-box;" +
 		"padding: 4px 8px; border: 1px solid rgba(255,255,255,0.08);" +
 		"border-radius: 5px; background: rgba(255,255,255,0.05);" +
-			"color: #f1f5f9; font-size: 11px; outline: none;";
+		"color: #000000; font-size: 11px; outline: none;";
 	input.addEventListener("keydown", (e) => {
 		if (e.key === "Enter" && input.value.trim()) {
 			const folder = createFolder(input.value.trim());
@@ -390,7 +390,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		const empty = document.createElement("div");
 		empty.textContent = "No sessions in this folder";
 		empty.style.cssText =
-			"padding: 8px 6px; font-size: 11px; color: #94a3b8; text-align: center;";
+			"padding: 8px 6px; font-size: 11px; color: #374151; text-align: center;";
 		sessionsWrap.appendChild(empty);
 	} else {
 		sessions.forEach((s) => {
@@ -404,13 +404,13 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 			const title = document.createElement("span");
 			title.textContent = s.title || "Untitled";
 			title.style.cssText =
-				"font-size: 12px; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+				"font-size: 12px; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
 			item.appendChild(title);
 			const meta = document.createElement("span");
 			meta.textContent = s.updatedAt
 				? new Date(s.updatedAt).toLocaleDateString()
 				: "";
-			meta.style.cssText = "font-size: 10px; color: #94a3b8;"
+			meta.style.cssText = "font-size: 10px; color: #374151;";
 			item.appendChild(meta);
 			item.addEventListener("mouseenter", () => {
 				item.style.background = "rgba(255,255,255,0.05)";
