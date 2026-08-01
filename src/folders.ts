@@ -255,8 +255,12 @@ function buildLibrarySection(): HTMLDivElement {
  */
 export function toggleArenaSessionLibrarySection(): void {
 	const container = findArenaQuickNavContainer();
-	const section = container?.querySelector<HTMLElement>(`[${LIBRARY_SECTION_ATTR}]`);
-	const entry = container?.querySelector<HTMLElement>(`[${ARENA_FOLDER_ENTRY_ATTR}]`);
+	const section = container?.querySelector<HTMLElement>(
+		`[${LIBRARY_SECTION_ATTR}]`,
+	);
+	const entry = container?.querySelector<HTMLElement>(
+		`[${ARENA_FOLDER_ENTRY_ATTR}]`,
+	);
 	if (!section) return;
 
 	librarySectionOpen = !librarySectionOpen;
@@ -287,7 +291,10 @@ export function setupFoldersStorageSync(): void {
 	chrome.storage.onChanged.addListener((changes) => {
 		if (!(FOLDERS_KEY in changes)) return;
 		const { newValue } = changes[FOLDERS_KEY] as {
-			newValue?: { folders: SessionFolder[]; sessions: [string, SessionMeta][] };
+			newValue?: {
+				folders: SessionFolder[];
+				sessions: [string, SessionMeta][];
+			};
 		};
 		if (!newValue) return;
 		foldersState.folders = newValue.folders ?? foldersState.folders;
@@ -297,7 +304,9 @@ export function setupFoldersStorageSync(): void {
 		// Re-render if section is open
 		if (librarySectionOpen) {
 			const container = findArenaQuickNavContainer();
-			const section = container?.querySelector<HTMLElement>(`[${LIBRARY_SECTION_ATTR}]`);
+			const section = container?.querySelector<HTMLElement>(
+				`[${LIBRARY_SECTION_ATTR}]`,
+			);
 			if (section) renderArenaSessionLibrarySection(section);
 		}
 	});
@@ -323,7 +332,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		row.style.cssText =
 			"display: flex; align-items: center; justify-content: space-between;" +
 			"padding: 5px 6px; border-radius: 5px; cursor: pointer;" +
-			"font-size: 12px; color: #c5cbd6;" +
+			"font-size: 12px; color: #e2e8f0;" +
 			"transition: background 0.08s;";
 		if (isActive) {
 			row.style.background = "rgba(77,124,255,0.15)";
@@ -332,12 +341,14 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 
 		const name = document.createElement("span");
 		name.textContent = folder.name;
-		name.style.cssText = "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+		name.style.cssText =
+			"flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
 		row.appendChild(name);
 
 		const count = document.createElement("span");
 		count.textContent = String(getSessionsInFolder(folder.id).length);
-		count.style.cssText = "font-size: 10px; color: #6b7a90; margin-left: 4px; flex-shrink: 0;";
+		count.style.cssText =
+			"font-size: 10px; color: #94a3b8; margin-left: 4px; flex-shrink: 0;";
 		row.appendChild(count);
 
 		row.addEventListener("click", () => {
@@ -358,7 +369,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 		"width: 100%; box-sizing: border-box;" +
 		"padding: 4px 8px; border: 1px solid rgba(255,255,255,0.08);" +
 		"border-radius: 5px; background: rgba(255,255,255,0.05);" +
-		"color: #e2e8f0; font-size: 11px; outline: none;";
+			"color: #f1f5f9; font-size: 11px; outline: none;";
 	input.addEventListener("keydown", (e) => {
 		if (e.key === "Enter" && input.value.trim()) {
 			const folder = createFolder(input.value.trim());
@@ -378,7 +389,8 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 	if (sessions.length === 0) {
 		const empty = document.createElement("div");
 		empty.textContent = "No sessions in this folder";
-		empty.style.cssText = "padding: 8px 6px; font-size: 11px; color: #6b7a90; text-align: center;";
+		empty.style.cssText =
+			"padding: 8px 6px; font-size: 11px; color: #94a3b8; text-align: center;";
 		sessionsWrap.appendChild(empty);
 	} else {
 		sessions.forEach((s) => {
@@ -391,11 +403,14 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 				"cursor: pointer; transition: background 0.08s;";
 			const title = document.createElement("span");
 			title.textContent = s.title || "Untitled";
-			title.style.cssText = "font-size: 12px; color: #d1d8e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+			title.style.cssText =
+				"font-size: 12px; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
 			item.appendChild(title);
 			const meta = document.createElement("span");
-			meta.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "";
-			meta.style.cssText = "font-size: 10px; color: #5a6678;";
+			meta.textContent = s.updatedAt
+				? new Date(s.updatedAt).toLocaleDateString()
+				: "";
+			meta.style.cssText = "font-size: 10px; color: #94a3b8;"
 			item.appendChild(meta);
 			item.addEventListener("mouseenter", () => {
 				item.style.background = "rgba(255,255,255,0.05)";

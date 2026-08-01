@@ -455,18 +455,14 @@ export function showArenaSessionLibraryPanel(): void {
 function showSessionLibraryInline(
 	container: ParentNode,
 	foldersState: FolderState,
-	getSessionsInFolder: (
-		folderId: string,
-	) => Array<{
+	getSessionsInFolder: (folderId: string) => Array<{
 		sessionId: string;
 		title: string;
 		folderId: string;
 		createdAt: number;
 		updatedAt: number;
 	}>,
-	createFolder: (
-		name: string,
-	) => {
+	createFolder: (name: string) => {
 		id: string;
 		name: string;
 		createdAt: number;
