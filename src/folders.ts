@@ -276,6 +276,34 @@ export function toggleArenaSessionLibrarySection(): void {
 }
 
 /**
+ * Listen to chrome.storage changes so that cross-tab or cross-session updates
+ * to folders/sessions are reflected in the current tab's in-memory state.
+ * If the inline section is currently open, re-renders it immediately.
+ * Call once from content.ts bootstrap.
+ */
+export function setupFoldersStorageSync(): void {
+	if (typeof chrome === "undefined" || !chrome.storage) return;
+	if (!contextValid) return;
+	chrome.storage.onChanged.addListener((changes) => {
+		if (!(FOLDERS_KEY in changes)) return;
+		const { newValue } = changes[FOLDERS_KEY] as {
+			newValue?: { folders: SessionFolder[]; sessions: [string, SessionMeta][] };
+		};
+		if (!newValue) return;
+		foldersState.folders = newValue.folders ?? foldersState.folders;
+		if (newValue.sessions) {
+			foldersState.sessions = new Map(newValue.sessions);
+		}
+		// Re-render if section is open
+		if (librarySectionOpen) {
+			const container = findArenaQuickNavContainer();
+			const section = container?.querySelector<HTMLElement>(`[${LIBRARY_SECTION_ATTR}]`);
+			if (section) renderArenaSessionLibrarySection(section);
+		}
+	});
+}
+
+/**
  * Render the Session Library content into an existing container element.
  * Called when the section is opened. Re-renders every time to pick up latest state.
  */

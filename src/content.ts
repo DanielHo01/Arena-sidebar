@@ -39,6 +39,7 @@ import {
 	ensureArenaFolderEntry,
 	setupHistoryContextMenu,
 	toggleArenaSessionLibrarySection,
+	setupFoldersStorageSync,
 } from "./folders";
 import { buildFab } from "./ui/fab";
 import {
@@ -499,6 +500,7 @@ try {
 		lastRouteKey = getRouteKey(); // init route key on first load
 		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
 		initFolders(); // Sprint 9: load persisted folder data from storage
+		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),
