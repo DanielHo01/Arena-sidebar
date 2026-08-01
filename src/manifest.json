@@ -1,49 +1,49 @@
 {
-  "manifest_version": 3,
-  "name": "Edge AI Sidebar",
-  "version": "0.1.0",
-  "description": "Floating message navigator for arena.ai — click to jump between messages",
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": [
-    "https://arena.ai/*",
-    "https://www.arena.ai/*"
-  ],
-  "icons": {
-    "16": "public/icons/icon-16.png",
-    "32": "public/icons/icon-32.png",
-    "48": "public/icons/icon-48.png",
-    "128": "public/icons/icon-128.png"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://arena.ai/*",
-        "https://www.arena.ai/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
-      ],
-      "js": ["public/inject-hook.js"],
-      "run_at": "document_start",
-      "world": "MAIN",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "https://arena.ai/*",
-        "https://www.arena.ai/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
-      ],
-      "js": ["src/content.ts"],
-      "run_at": "document_start",
-      "all_frames": false
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "matches": ["http://127.0.0.1:8000/*", "http://localhost:8000/*", "http://127.0.0.1/*", "http://localhost/*", "https://arena.ai/*", "https://www.arena.ai/*"],
-      "resources": ["inject-hook.js"],
-      "use_dynamic_url": false
-    }
-  ]
+	"manifest_version": 3,
+	"name": "Edge AI Sidebar",
+	"version": "0.1.0",
+	"description": "Floating message navigator for arena.ai — click to jump between messages",
+	"permissions": ["storage", "activeTab", "scripting"],
+	"host_permissions": [
+		"https://arena.ai/*",
+		"https://www.arena.ai/*"
+	],
+	"icons": {
+		"16": "public/icons/icon-16.png",
+		"32": "public/icons/icon-32.png",
+		"48": "public/icons/icon-48.png",
+		"128": "public/icons/icon-128.png"
+	},
+	"content_scripts": [
+		{
+			"matches": [
+				"https://arena.ai/*",
+				"https://www.arena.ai/*",
+				"http://localhost/*",
+				"http://127.0.0.1/*"
+			],
+			"js": ["public/inject-hook.js"],
+			"run_at": "document_start",
+			"world": "MAIN",
+			"all_frames": false
+		},
+		{
+			"matches": [
+				"https://arena.ai/*",
+				"https://www.arena.ai/*",
+				"http://localhost/*",
+				"http://127.0.0.1/*"
+			],
+			"js": ["src/content.ts"],
+			"run_at": "document_start",
+			"all_frames": false
+		}
+	],
+	"web_accessible_resources": [
+		{
+			"matches": ["http://127.0.0.1:8000/*", "http://localhost:8000/*", "http://127.0.0.1/*", "http://localhost/*", "https://arena.ai/*", "https://www.arena.ai/*"],
+			"resources": ["inject-hook.js"],
+			"use_dynamic_url": false
+		}
+	]
 }
