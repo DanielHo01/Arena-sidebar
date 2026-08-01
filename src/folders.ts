@@ -157,9 +157,109 @@ export function getSessionsInFolder(folderId: string): SessionMeta[] {
 	);
 }
 
-// ─── UI Setup ───────────────────────────────────────────────────────────────────────
+// ─── Arena DOM Integration ───────────────────────────────────────────────────────────────
 
-/** Call once from content.ts setup to load persisted folders. */
+/**
+ * Phase 10A Commit 1: Inject the 🗂 Session Library entry into Arena's native
+ * quick-nav bar (Child 2 of the floating sidebar).
+ *
+ * Arena DOM path:
+ *   [class*="sidebar-wrapper"]          ← sidebar wrapper
+ *     .children[0]                         ← floating container
+ *       .children[1]                       ← bg-sidebar
+ *         .children[0]                     ← floating sidebar root
+ *           Child 2 = quick-nav (New Chat / Leaderboard / Search)
+ */
+
+const ARENA_FOLDER_ENTRY_ATTR = "data-ai-sidebar-folder-entry";
+
+/**
+ * Locate the Arena sidebar-wrapper element.
+ * Returns null if Arena DOM is not present (graceful degradation).
+ */
+function findArenaSidebarWrapper(): HTMLElement | null {
+	return document.querySelector<HTMLElement>('[class*="sidebar-wrapper"]');
+}
+
+/**
+ * Navigate to the quick-nav container (Child 2) inside the floating sidebar.
+ * This is where New Chat / Leaderboard / Search live.
+ */
+function findArenaQuickNavContainer(): HTMLElement | null {
+	const wrapper = findArenaSidebarWrapper();
+	if (!wrapper) return null;
+	const floating = wrapper.children[0];
+	if (!floating) return null;
+	const bgSidebar = floating.children[1];
+	if (!bgSidebar) return null;
+	const floatingRoot = bgSidebar.children[0];
+	if (!floatingRoot) return null;
+	const quickNav = floatingRoot.children[2];
+	if (!quickNav || quickNav.tagName !== "DIV") return null;
+	return quickNav as HTMLElement;
+}
+
+/**
+ * Build the 🗂 Session Library anchor element.
+ * Does NOT open the modal — that is handled by the onclick.
+ */
+function buildArenaFolderEntry(onOpen: () => void): HTMLAnchorElement {
+	const a = document.createElement("a");
+	a.setAttribute(ARENA_FOLDER_ENTRY_ATTR, "1");
+	a.className =
+		"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md border border-transparent pr-2 text-sidebar-foreground shadow-none transition-[color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[active=true]:bg-sidebar-accent group-data-[active=true]:text-sidebar-accent-foreground group-data-[active=true]:hover:bg-sidebar-accent/90";
+
+	const icon = document.createElement("span");
+	icon.className = "flex aspect-square h-[32px] flex-shrink-0 items-center justify-center rounded-md p-1.5 text-base leading-none";
+	icon.textContent = "🗂";
+	a.appendChild(icon);
+
+	const label = document.createElement("span");
+	label.className = "flex-1 truncate text-sm font-medium";
+	label.textContent = "Session Library";
+	a.appendChild(label);
+
+	a.addEventListener("click", (e) => {
+		e.preventDefault();
+		onOpen();
+	});
+	return a;
+}
+
+/**
+ * Inject the 🗂 Session Library entry into Arena's quick-nav bar.
+ * Safe to call multiple times — checks for existing entry before inserting.
+ *
+ * @param onOpen  Callback to open the Session Library panel.
+ */
+export function ensureArenaFolderEntry(onOpen: () => void): void {
+	// Guard: skip if already injected
+	if (document.querySelector(`[${ARENA_FOLDER_ENTRY_ATTR}]`)) return;
+
+	const container = findArenaQuickNavContainer();
+	if (!container) {
+		// Arena DOM not ready yet — will be retried by content.ts bootstrap / observer
+		return;
+	}
+
+	const entry = buildArenaFolderEntry(onOpen);
+	const firstChild = container.firstElementChild;
+	if (firstChild) {
+		container.insertBefore(entry, firstChild);
+	} else {
+		container.appendChild(entry);
+	}
+}
+
+/**
+ * Remove the injected entry (used when cleaning up or switching routes).
+ */
+export function removeArenaFolderEntry(): void {
+	const entry = document.querySelector(`[${ARENA_FOLDER_ENTRY_ATTR}]`);
+	if (entry) entry.remove();
+}
+
+/** Call once from content.ts bootstrap to load persisted folders from storage. */
 export function initFolders(): Promise<void> {
 	return loadFromStorage();
 }
