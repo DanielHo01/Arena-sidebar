@@ -210,7 +210,8 @@ function buildArenaFolderEntry(onOpen: () => void): HTMLAnchorElement {
 		"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md border border-transparent pr-2 text-sidebar-foreground shadow-none transition-[color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[active=true]:bg-sidebar-accent group-data-[active=true]:text-sidebar-accent-foreground group-data-[active=true]:hover:bg-sidebar-accent/90";
 
 	const icon = document.createElement("span");
-	icon.className = "flex aspect-square h-[32px] flex-shrink-0 items-center justify-center rounded-md p-1.5 text-base leading-none";
+	icon.className =
+		"flex aspect-square h-[32px] flex-shrink-0 items-center justify-center rounded-md p-1.5 text-base leading-none";
 	icon.textContent = "🗂";
 	a.appendChild(icon);
 
@@ -410,7 +411,9 @@ export function setupHistoryContextMenu(): void {
 			while (sub.firstChild) sub.removeChild(sub.firstChild);
 			foldersState.folders.forEach((folder) => {
 				const item = document.createElement("div");
-				item.className = "ai-sidebar-ctx-sub-item" + (folder.id === currentFolderId ? " active" : "");
+				item.className =
+					"ai-sidebar-ctx-sub-item" +
+					(folder.id === currentFolderId ? " active" : "");
 				item.textContent =
 					(folder.id === INBOX_ID ? "📥  " : "") +
 					folder.name +
@@ -453,7 +456,8 @@ export function setupHistoryContextMenu(): void {
 
 	// Bind existing links
 	function bindLinks() {
-		const links = document.querySelectorAll<HTMLAnchorElement>('a[href*="/c/"]');
+		const links =
+			document.querySelectorAll<HTMLAnchorElement>('a[href*="/c/"]');
 		links.forEach((link) => {
 			if (link.dataset.aiSidebarCtxBound) return;
 			link.dataset.aiSidebarCtxBound = "1";

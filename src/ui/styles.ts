@@ -476,11 +476,15 @@ export const UI_STYLES = /* css */ `
   /* ─── Phase 10A: Arena-native Session Library Panel ─── */
   .arena-slm {
     position: fixed;
-    inset: 0;
+    /* Start after Arena's left sidebar (approx 260px) so we don't get covered */
+    left: 260px;
+    top: 0;
+    right: 0;
+    bottom: 0;
     z-index: 50;
     display: flex;
     align-items: stretch;
-    justify-content: flex-end;
+    flex-direction: column;
   }
   .arena-slm-backdrop {
     position: absolute;
@@ -490,7 +494,9 @@ export const UI_STYLES = /* css */ `
   }
   .arena-slm-panel {
     position: relative;
-    width: min(680px, 95vw);
+    /* Constrain to content area (right of Arena sidebar), max 620px */
+    width: min(620px, calc(100vw - 260px));
+    max-width: 620px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -604,7 +610,7 @@ export const UI_STYLES = /* css */ `
   .arena-slm-empty {
     padding: 20px 12px; text-align: center; color: #9ca3af; font-size: 11px;
   }
-`
+`;
 
 export const ICON_MESSAGE_SVG =
 	'<svg viewBox="0 0 24 24" fill="none" stroke="hsl(222, 89%, 55%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';

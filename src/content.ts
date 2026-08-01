@@ -34,7 +34,11 @@ import {
 } from "./conversationStore";
 import { panel, fab, capture, timers, revision, cachedElements } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
-import { initFolders, ensureArenaFolderEntry, setupHistoryContextMenu } from "./folders";
+import {
+	initFolders,
+	ensureArenaFolderEntry,
+	setupHistoryContextMenu,
+} from "./folders";
 import { showArenaSessionLibraryPanel } from "./ui/panel";
 import { buildFab } from "./ui/fab";
 import {
@@ -496,7 +500,9 @@ try {
 		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
 		initFolders(); // Sprint 9: load persisted folder data from storage
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
-		queueMicrotask(() => ensureArenaFolderEntry(() => showArenaSessionLibraryPanel()));
+		queueMicrotask(() =>
+			ensureArenaFolderEntry(() => showArenaSessionLibraryPanel()),
+		);
 		// Phase 10A: wire right-click context menu to Arena history links
 		setupHistoryContextMenu();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");

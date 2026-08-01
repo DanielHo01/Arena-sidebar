@@ -20,6 +20,7 @@ import {
 	renameFolder,
 	addSessionToFolder,
 	INBOX_ID,
+	initFolders,
 } from "../folders";
 
 // ─── Scroll highlight ──────────────────────────────────────────────────────────────────────
@@ -427,16 +428,24 @@ export function ensureStyles(shadowRoot: ShadowRoot) {
  * Uses existing folder/session state from folders.ts.
  */
 export function showArenaSessionLibraryPanel(): void {
-	showSessionLibraryInline(
-		document.body,
-		foldersState,
-		getSessionsInFolder,
-		createFolder,
-		deleteFolder,
-		renameFolder,
-		addSessionToFolder,
-		INBOX_ID,
-	);
+	// Ensure folders are loaded from storage before rendering
+	initFolders().then(() => {
+		console.log("[AI Sidebar] session library: opening", {
+			folders: foldersState.folders.length,
+			sessions: foldersState.sessions.size,
+			active: foldersState.activeFolderId,
+		});
+		showSessionLibraryInline(
+			document.body,
+			foldersState,
+			getSessionsInFolder,
+			createFolder,
+			deleteFolder,
+			renameFolder,
+			addSessionToFolder,
+			INBOX_ID,
+		);
+	});
 }
 
 /**
@@ -446,16 +455,38 @@ export function showArenaSessionLibraryPanel(): void {
 function showSessionLibraryInline(
 	container: ParentNode,
 	foldersState: FolderState,
-	getSessionsInFolder: (folderId: string) => Array<{ sessionId: string; title: string; folderId: string; createdAt: number; updatedAt: number }>,
-	createFolder: (name: string) => { id: string; name: string; createdAt: number; updatedAt: number } | null,
+	getSessionsInFolder: (
+		folderId: string,
+	) => Array<{
+		sessionId: string;
+		title: string;
+		folderId: string;
+		createdAt: number;
+		updatedAt: number;
+	}>,
+	createFolder: (
+		name: string,
+	) => {
+		id: string;
+		name: string;
+		createdAt: number;
+		updatedAt: number;
+	} | null,
 	deleteFolder: (folderId: string) => void,
 	renameFolder: (folderId: string, newName: string) => void,
-	addSessionToFolder: (sessionId: string, title: string, folderId: string) => void,
+	addSessionToFolder: (
+		sessionId: string,
+		title: string,
+		folderId: string,
+	) => void,
 	INBOX_ID: string,
 ) {
 	// Dismiss if already open
 	const existing = container.querySelector(".arena-slm");
-	if (existing) { existing.remove(); return; }
+	if (existing) {
+		existing.remove();
+		return;
+	}
 
 	const overlay = document.createElement("div");
 	overlay.className = "arena-slm";
@@ -486,11 +517,15 @@ function showSessionLibraryInline(
 
 	const close = () => overlay.remove();
 	overlay.querySelector(".arena-slm-close")!.addEventListener("click", close);
-	overlay.querySelector(".arena-slm-backdrop")!.addEventListener("click", close);
+	overlay
+		.querySelector(".arena-slm-backdrop")!
+		.addEventListener("click", close);
 
 	const folderList = overlay.querySelector(".arena-slm-folder-list")!;
 	const sessionList = overlay.querySelector(".arena-slm-session-list")!;
-	const folderInput = overlay.querySelector(".arena-slm-input") as HTMLInputElement;
+	const folderInput = overlay.querySelector(
+		".arena-slm-input",
+	) as HTMLInputElement;
 
 	function renderFolders() {
 		folderList.innerHTML = "";
@@ -537,7 +572,8 @@ function showSessionLibraryInline(
 					const folderName = folder.name;
 					if (confirm(`Delete "${folderName}"? Sessions go to Inbox.`)) {
 						deleteFolder(folder.id);
-						if (foldersState.activeFolderId === folder.id) foldersState.activeFolderId = INBOX_ID;
+						if (foldersState.activeFolderId === folder.id)
+							foldersState.activeFolderId = INBOX_ID;
 						renderFolders();
 						renderSessions();
 					}
@@ -568,7 +604,9 @@ function showSessionLibraryInline(
 
 			const metaDiv = document.createElement("div");
 			metaDiv.className = "arena-slm-session-meta";
-			metaDiv.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "";
+			metaDiv.textContent = s.updatedAt
+				? new Date(s.updatedAt).toLocaleDateString()
+				: "";
 			el.appendChild(metaDiv);
 
 			const moveBtn = document.createElement("select");
@@ -635,18 +673,14 @@ type FolderState = {
 function _showSessionLibraryModal(
 	shadowRoot: ShadowRoot,
 	foldersState: FolderState,
-	getSessionsInFolder: (
-		folderId: string,
-	) => Array<{
+	getSessionsInFolder: (folderId: string) => Array<{
 		sessionId: string;
 		title: string;
 		folderId: string;
 		createdAt: number;
 		updatedAt: number;
 	}>,
-	createFolder: (
-		name: string,
-	) => {
+	createFolder: (name: string) => {
 		id: string;
 		name: string;
 		createdAt: number;
