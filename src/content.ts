@@ -38,8 +38,8 @@ import {
 	initFolders,
 	ensureArenaFolderEntry,
 	setupHistoryContextMenu,
+	toggleArenaSessionLibrarySection,
 } from "./folders";
-import { showArenaSessionLibraryPanel } from "./ui/panel";
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,
@@ -189,7 +189,7 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 					rebuildForCurrentRoute();
 					isFirstRender = true; // route change → next render should be immediate
 					// Phase 10A: re-inject Arena sidebar entries on route change
-					ensureArenaFolderEntry(() => showArenaSessionLibraryPanel());
+					ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection());
 					setupHistoryContextMenu();
 				}
 				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
@@ -501,7 +501,7 @@ try {
 		initFolders(); // Sprint 9: load persisted folder data from storage
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
-			ensureArenaFolderEntry(() => showArenaSessionLibraryPanel()),
+			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),
 		);
 		// Phase 10A: wire right-click context menu to Arena history links
 		setupHistoryContextMenu();
