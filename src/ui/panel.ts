@@ -364,22 +364,6 @@ export function ensurePanelSkeleton(
 	});
 	headerActions.appendChild(exportBtn);
 
-	// Sprint 9: Session Library button
-	const folderBtn = makeHeaderBtn("🗂", "Session library", () => {
-		showSessionLibraryModal(
-			shadowRoot,
-			foldersState,
-			getSessionsInFolder,
-			createFolder,
-			deleteFolder,
-			renameFolder,
-			addSessionToFolder,
-			INBOX_ID,
-			refreshUI,
-		);
-	});
-	headerActions.appendChild(folderBtn);
-
 	// Summarize button — hidden on /c/ (no full history available there)
 	if (!isCharacterChat) {
 		const sumBtn = makeHeaderBtn("✨", "AI summarize rounds", () => {
@@ -647,7 +631,8 @@ type FolderState = {
 	activeFolderId: string;
 };
 
-function showSessionLibraryModal(
+// @ts-ignore — deprecated fallback, kept for emergency recovery
+function _showSessionLibraryModal(
 	shadowRoot: ShadowRoot,
 	foldersState: FolderState,
 	getSessionsInFolder: (
