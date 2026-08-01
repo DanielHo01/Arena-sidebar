@@ -395,7 +395,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 	} else {
 		sessions.forEach((s) => {
 			const item = document.createElement("a");
-			item.href = s.url || `#`;
+			item.href = `/c/${s.sessionId}`;
 			item.className = "asl-session-item";
 			item.style.cssText =
 				"display: flex; flex-direction: column; gap: 1px;" +
