@@ -55,7 +55,7 @@ import {
 	setupScrollHighlight,
 	refreshCurrentHighlight,
 } from "./ui/panel";
-import { setupHistoryTitleEditing } from './historyTitles';
+import { setupHistoryTitleEditing } from "./historyTitles";
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close
@@ -401,11 +401,7 @@ function countRenderedMessages(): number {
 	return n;
 }
 
-// TEMP-PERF-INSTRUMENT: 验收用临时埋点,验收后删除
-let __refreshCount = 0;
 function refreshUI() {
-	const __t0 = performance.now();
-	__refreshCount++;
 	if (!shadowRoot) return;
 
 	// Read from canonical store (updated by bootstrap, capture, or periodic DOM re-scan).
@@ -492,12 +488,7 @@ function refreshUI() {
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
 	}
-	const __dt = performance.now() - __t0;
-	if (__dt > 30 || __refreshCount % 5 === 0) {
-		console.log(`[Perf] refreshUI #${__refreshCount}: ${__dt.toFixed(1)}ms`);
 	}
-}
-
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
 function ensureUI() {
