@@ -10,13 +10,12 @@
 // round.title is deliberately NOT part of this chain — it is a per-round preview,
 // not a session title.
 
-import type { SessionMeta } from "./types";
-
-/** Input shape — structurally compatible with SessionMeta. */
-export type SessionTitleInput = Pick<
-	SessionMeta,
-	"customTitle" | "title" | "sessionId"
->;
+/** Input shape — customTitle/title are optional; sessionId is required. */
+export type SessionTitleInput = {
+	customTitle?: string;
+	title?: string;
+	sessionId: string;
+};
 
 /** Resolve the display title for a session. Never returns an empty string. */
 export function resolveSessionTitle(meta: SessionTitleInput): string {
