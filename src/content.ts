@@ -42,11 +42,13 @@ import { pollCaptures, setupRscCapture } from "./capture";
 import {
 	initFolders,
 	migrateHistoryTitles,
-	ensureArenaFolderEntry,
-	setupHistoryContextMenu,
-	toggleArenaSessionLibrarySection,
 	setupFoldersStorageSync,
-} from "./folders";
+} from "./foldersStore";
+import {
+	ensureArenaFolderEntry,
+	toggleArenaSessionLibrarySection,
+} from "./arenaLibrary";
+import { setupHistoryContextMenu } from "./historyContextMenu";
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,

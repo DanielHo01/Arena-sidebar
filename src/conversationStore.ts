@@ -10,7 +10,7 @@
 
 import type { SidebarMessage, SidebarRound, MessageOrigin } from "./types";
 import { cachedElements, contextValid, invalidateContext } from "./state";
-import { upsertSessionMetaFromStore } from "./folders";
+import { upsertSessionMetaFromStore } from "./foldersStore";
 
 // ─── Stable fingerprint for content matching ────────────────────────────────────────
 

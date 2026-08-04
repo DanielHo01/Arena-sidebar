@@ -4,7 +4,11 @@
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
 
-import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
+import {
+	foldersState,
+	getSessionMeta,
+	setSessionCustomTitle,
+} from "./foldersStore";
 import { resolveSessionTitle } from "./titleResolver";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
