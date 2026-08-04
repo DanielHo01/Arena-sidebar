@@ -4,9 +4,9 @@
 //   exportConversation — triggers the export modal
 //   summarizeRounds    — async entry point for the summary modal
 
-import type { ExtractedMessage, CapturedRound } from "../types";
+import type { SidebarMessage, CapturedRound } from "../types";
 import { chatRounds, lookupModelName } from "../capture";
-import { groupIntoRounds } from "../rounds";
+import { computeRounds } from "../conversationStore";
 import { capture } from "../state";
 
 // ─── Download helper ─────────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ function downloadBlob(filename: string, mime: string, content: string) {
 
 // ─── Summary prompt builder ──────────────────────────────────────────────────────────────
 
-export function buildSummaryPrompt(messages: ExtractedMessage[]): string {
+export function buildSummaryPrompt(messages: SidebarMessage[]): string {
 	const userIdxList: number[] = [];
 	messages.forEach((m, idx) => {
 		if (m.role === "user") userIdxList.push(idx);
@@ -263,11 +263,11 @@ export function showSummaryModal(shadowRoot: ShadowRoot, promptText: string) {
 // ─── Export conversation ───────────────────────────────────────────────────────────────
 
 export function exportConversation(
-	messages: ExtractedMessage[],
+	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
 	const sid = location.pathname.match(/\/c\/([^/?]+)/)?.[1] || "";
-	const rounds = groupIntoRounds(messages);
+	const rounds = computeRounds(messages);
 	const capturedByUser = new Map<string, CapturedRound>();
 	for (const r of chatRounds.values()) {
 		if (r.request.content)
@@ -289,7 +289,7 @@ export function exportConversation(
 			const userContent =
 				userIdx >= 0 ? messages[userIdx].content : round.title;
 			const cap = capturedByUser.get(userContent.slice(0, 200));
-			let assistants: ExtractedMessage[] = [];
+			let assistants: SidebarMessage[] = [];
 			if (userIdx >= 0) {
 				const nextUserIdx =
 					userIdxList[userIdxList.indexOf(userIdx) + 1] ?? messages.length;
@@ -351,7 +351,7 @@ export function exportConversation(
 // ─── Summarize rounds ─────────────────────────────────────────────────────────────────
 
 export function summarizeRounds(
-	messages: ExtractedMessage[],
+	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
 	if (capture.isSummarizing) return;

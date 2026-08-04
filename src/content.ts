@@ -26,7 +26,12 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 //   ui/modals.ts    — export/summary modals
 //   folders.ts          — session folder management
 
-import { extractMessages, resetExtractState } from "./extract";
+import {
+	extractMessages,
+	resetExtractState,
+	USER_MESSAGE_SELECTOR,
+	ASSISTANT_MESSAGE_SELECTOR,
+} from "./extract";
 import {
 	conversationStore,
 	refreshStore,
@@ -182,7 +187,7 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 		// 250ms was too short and stacked multiple extract rebuilds.
 		// Sprint 3.1: skip debounce on first render so panel appears instantly.
 		timers.debounce = setTimeout(() => {
-			if (!panel.isDragging) {
+			if (!panel.isDragging && !preScrollActive) {
 				// Sprint 3.2: detect route change and rebuild store
 				const nextKey = getRouteKey();
 				if (nextKey !== lastRouteKey) {
@@ -237,8 +242,11 @@ function setupPeriodicPush(refreshUI: () => void) {
 			refreshStore({ dom: domMsgs, bindAnchors: false });
 			if (conversationStore.messages.length !== prevCount) revision.store++;
 			refreshUI();
-			// Sprint 5: persist on each periodic save cycle
-			conversationStore.saveToStorage();
+			// Sprint 5: persist only when new messages arrived — writing the full
+			// session payload every 30s (even when idle) caused avoidable storage churn.
+			if (conversationStore.messages.length !== prevCount) {
+				conversationStore.saveToStorage();
+			}
 		}
 	}, 30000);
 }
@@ -281,6 +289,22 @@ function findScrollContainer(): HTMLElement | null {
 
 let preScrollDone = false;
 let preScrollInterval: ReturnType<typeof setInterval> | null = null;
+let preScrollActive = false; // suppress observer work while forced-scrolling
+
+// Lightweight container lookup for preScroll retries — avoids the full <main>
+// fallback scan (querySelectorAll("*") + per-element scrollHeight forces reflow).
+function peekScrollContainer(): HTMLElement | null {
+	const c = document.querySelector(
+		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
+	);
+	if (
+		c &&
+		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
+	) {
+		return c as HTMLElement;
+	}
+	return null;
+}
 
 function startPreScroll(onDone: () => void) {
 	if (preScrollDone) {
@@ -289,39 +313,104 @@ function startPreScroll(onDone: () => void) {
 	}
 	const container = findScrollContainer();
 	if (!container) {
-		console.log("[AI Sidebar] preScroll: no scroll container found");
+		// Arena's React renders the scroll container after the body exists, so
+		// retry briefly (using the cheap peek) instead of giving up — a skipped
+		// preScroll leaves long conversations partially extracted.
+		console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
+		let retries = 0;
+		const retry = setInterval(() => {
+			const c = peekScrollContainer();
+			if (c || ++retries > 10) {
+				clearInterval(retry);
+				if (c) {
+					startPreScroll(onDone);
+				} else {
+					console.log(
+						"[AI Sidebar] preScroll: gave up, no container after retries",
+					);
+					preScrollDone = true;
+					onDone();
+				}
+			}
+		}, 200);
+		return;
+	}
+	// preScroll exists because Arena virtualizes (renders only ~8 messages) and we
+	// need the full list extracted. If the container isn't virtualized (fits on
+	// screen), skip entirely — no scroll, no extract, no signature burn.
+	if (container.scrollHeight <= container.clientHeight * 2) {
+		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
 		preScrollDone = true;
 		onDone();
 		return;
 	}
-	const totalH = container.scrollHeight;
 	const step = Math.max(container.clientHeight * 2, 1500);
-	let pos = 0;
-	console.log("[AI Sidebar] preScroll: totalH=", totalH, "step=", step);
+	console.log(
+		"[AI Sidebar] preScroll: totalH=",
+		container.scrollHeight,
+		"step=",
+		step,
+	);
+	preScrollActive = true;
+	// Stop once the rendered message count stops growing (Arena lazy-loads more
+	// while scrolling) — don't force-scroll the whole conversation to the bottom,
+	// which on long chats makes Arena render every message and janks the page.
+	let lastMsgCount = countRenderedMessages();
+	let stableTicks = 0;
+	const STABLE_LIMIT = 3;
 	preScrollInterval = setInterval(() => {
-		// If interval is somehow already cleared, stop.
-		if (!preScrollInterval) {
-			clearInterval(preScrollInterval!);
+		// Defense: if the interval was cleared externally, stop cleanly.
+		if (!preScrollActive || !preScrollInterval) {
+			if (preScrollInterval) clearInterval(preScrollInterval);
+			preScrollInterval = null;
+			preScrollActive = false;
 			return;
 		}
-		pos += step;
-		if (pos >= totalH) {
+		container.scrollBy(0, step);
+		const newCount = countRenderedMessages();
+		if (newCount > lastMsgCount) {
+			lastMsgCount = newCount;
+			stableTicks = 0;
+		} else {
+			stableTicks++;
+		}
+		if (stableTicks >= STABLE_LIMIT) {
 			clearInterval(preScrollInterval);
 			preScrollInterval = null;
-			container.scrollTop = totalH;
-			console.log("[AI Sidebar] preScroll: done, restoring scroll");
+			preScrollActive = false;
+			console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
 			setTimeout(() => {
 				container.scrollTop = 0;
 				preScrollDone = true;
 				onDone();
 			}, 600);
-		} else {
-			container.scrollBy(0, step);
 		}
-	}, 80);
+	}, 120);
 }
 
+// Count rendered message elements cheaply (querySelectorAll, no reflow).
+function countRenderedMessages(): number {
+	const main = document.querySelector("main");
+	if (!main) return 0;
+	let n = 0;
+	try {
+		n += main.querySelectorAll(USER_MESSAGE_SELECTOR).length;
+	} catch (_e) {
+		/* selector may throw on detached nodes */
+	}
+	try {
+		n += main.querySelectorAll(ASSISTANT_MESSAGE_SELECTOR).length;
+	} catch (_e) {
+		/* selector may throw on detached nodes */
+	}
+	return n;
+}
+
+// TEMP-PERF-INSTRUMENT: 验收用临时埋点,验收后删除
+let __refreshCount = 0;
 function refreshUI() {
+	const __t0 = performance.now();
+	__refreshCount++;
 	revision.render++;
 	if (!shadowRoot) return;
 
@@ -408,6 +497,10 @@ function refreshUI() {
 		);
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
+	}
+	const __dt = performance.now() - __t0;
+	if (__dt > 30 || __refreshCount % 5 === 0) {
+		console.log(`[Perf] refreshUI #${__refreshCount}: ${__dt.toFixed(1)}ms`);
 	}
 }
 
@@ -507,6 +600,8 @@ try {
 		);
 		// Phase 10A: wire right-click context menu to Arena history links
 		setupHistoryContextMenu();
+		// Restore custom history titles immediately (not only after chat-area mutations)
+		setupHistoryTitleEditing();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
 		if (shadowRoot) {

@@ -21,8 +21,7 @@ export function resetExtractState(): void {
 	lastExtractSig = "";
 }
 
-function domSignature(): string {
-	const all = collectAllElements();
+function domSignature(all: Array<{ el: Element; role: "user" | "assistant" }>): string {
 	if (all.length === 0) return "empty";
 	const first = all.find((x) => x.role === "user");
 	const last = [...all].reverse().find((x) => x.role === "assistant");
@@ -43,8 +42,10 @@ function domSignature(): string {
 	].join("|");
 }
 
-function domChanged(): boolean {
-	const sig = domSignature();
+function domChanged(
+	all: Array<{ el: Element; role: "user" | "assistant" }>,
+): boolean {
+	const sig = domSignature(all);
 	if (sig === lastExtractSig) return false;
 	lastExtractSig = sig;
 	return true;
@@ -198,8 +199,11 @@ function collectAllElements(): Array<{
 
 export function extractMessages(): SidebarMessage[] {
 	// P1 fix: skip if DOM hasn't changed since last extract (avoids O(n) rebuild).
-	if (!domChanged()) return [];
+	// Collect elements ONCE — the signature check reuses the same batch instead of
+	// walking the whole DOM a second time (getBoundingClientRect forces reflow, so
+	// the old two-pass version paid the layout cost twice per scan).
 	const all = collectAllElements();
+	if (!domChanged(all)) return [];
 	// Sprint 3.2 fix: do NOT clear cachedElements — it preserves anchor bindings
 	// for previously extracted (now possibly recycled) DOM elements.
 	// Stale entries for recycled elements naturally become inert in bindDomAnchors.

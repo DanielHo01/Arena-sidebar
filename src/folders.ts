@@ -455,14 +455,6 @@ export function ensureArenaFolderEntry(onToggle: () => void): void {
 	}
 }
 
-/**
- * Remove the injected entry (used when cleaning up or switching routes).
- */
-export function removeArenaFolderEntry(): void {
-	const entry = document.querySelector(`[${ARENA_FOLDER_ENTRY_ATTR}]`);
-	if (entry) entry.remove();
-}
-
 // ─── Arena History Context Menu ───────────────────────────────────────────────────────────────
 
 /**

@@ -145,7 +145,7 @@ export const conversationStore = {
 
 // ─── Round computation ───────────────────────────────────────────────────────────────
 
-function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
+export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 	const rounds: SidebarRound[] = [];
 	let current: SidebarRound | null = null;
 	let pendingLead: SidebarMessage | null = null;

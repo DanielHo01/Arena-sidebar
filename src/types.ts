@@ -155,18 +155,3 @@ export interface SessionMeta {
 	url?: string;
 }
 
-// ─── Backward-compatible aliases ──────────────────────────────────────────────────
-// These let us migrate files one at a time without breaking existing imports.
-// Prefer the new names above in new code; remove aliases in Sprint 8+.
-
-/** @deprecated use SidebarMessage */
-export type CanonicalMessage = SidebarMessage;
-
-/** @deprecated use SidebarMessage */
-export type ExtractedMessage = SidebarMessage;
-
-/** @deprecated use SidebarRound */
-export type Round = SidebarRound;
-
-/** @deprecated use MessageOrigin */
-export type MessageSource = MessageOrigin;
