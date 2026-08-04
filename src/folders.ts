@@ -5,8 +5,6 @@
 //   initFolders    — load persisted folders from storage
 //   addSessionToFolder — assign a session to a folder
 //   createFolder — create a new folder
-//   deleteFolder — delete a folder (sessions go to inbox)
-//   renameFolder — rename a folder
 //   getSessionsInFolder — list sessions in a folder
 
 import type { SessionFolder, SessionMeta } from "./types";
@@ -126,29 +124,6 @@ export function createFolder(name: string): SessionFolder | null {
 	foldersState.folders.push(folder);
 	saveToStorage();
 	return folder;
-}
-
-export function deleteFolder(folderId: string): void {
-	if (folderId === INBOX_ID || folderId === ARCHIVE_ID) return; // cannot delete system folders
-	foldersState.folders = foldersState.folders.filter((f) => f.id !== folderId);
-	// Move orphaned sessions to inbox.
-	for (const [sid, meta] of foldersState.sessions) {
-		if (meta.folderId === folderId) {
-			foldersState.sessions.set(sid, { ...meta, folderId: INBOX_ID });
-		}
-	}
-	saveToStorage();
-}
-
-export function renameFolder(folderId: string, newName: string): void {
-	const trimmed = newName.trim();
-	if (!trimmed) return;
-	const folder = foldersState.folders.find((f) => f.id === folderId);
-	if (folder) {
-		folder.name = trimmed.slice(0, 40);
-		folder.updatedAt = Date.now();
-		saveToStorage();
-	}
 }
 
 export function getSessionsInFolder(folderId: string): SessionMeta[] {

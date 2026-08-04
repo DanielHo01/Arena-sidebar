@@ -228,16 +228,6 @@ export function setupRscCapture(): void {
 	console.log("[AI Sidebar] RSC capture: listening for __aiSidebarRsc");
 }
 
-/**
- * Remove RSC capture listener.
- */
-export function teardownRscCapture(): void {
-	if (_rscHandler) {
-		document.documentElement.removeEventListener("__aiSidebarRsc", _rscHandler);
-		_rscHandler = null;
-	}
-}
-
 // ─── Model name harvesting ────────────────────────────────────────────────────────
 
 export function harvestModelNames(): number {
