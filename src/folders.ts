@@ -9,6 +9,7 @@
 
 import type { SessionFolder, SessionMeta } from "./types";
 import { contextValid } from "./state";
+import { resolveSessionTitle } from "./titleResolver";
 
 // ─── Default folders ─────────────────────────────────────────────────────────────────
 
@@ -567,15 +568,15 @@ export function setupHistoryContextMenu(): void {
 		renameItem.textContent = "✏️  Rename";
 		renameItem.addEventListener("click", () => {
 			closeMenu();
-			const newTitle = prompt("Rename this session:", meta?.title || "");
+			const currentMeta = foldersState.sessions.get(sessionId);
+			const currentDisplay = resolveSessionTitle(currentMeta ?? null);
+			const newTitle = prompt("Rename this session:", currentDisplay);
 			if (newTitle !== null && newTitle.trim()) {
-				upsertSessionMetaFromStore(
-					sessionId,
-					newTitle.trim(),
-					meta?.roundCount ?? 0,
-					meta?.messageCount ?? 0,
-					meta?.url || href,
-				);
+				setSessionCustomTitle(sessionId, newTitle.trim());
+				// Sync: update native history link's title attribute so it shows the rename
+				link.title = newTitle.trim();
+				const titleSpan = link.querySelector("span");
+				if (titleSpan) titleSpan.textContent = newTitle.trim();
 			}
 		});
 		menu.appendChild(renameItem);
