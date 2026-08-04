@@ -41,6 +41,7 @@ import { panel, fab, timers, cachedElements } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
 import {
 	initFolders,
+	migrateHistoryTitles,
 	ensureArenaFolderEntry,
 	setupHistoryContextMenu,
 	toggleArenaSessionLibrarySection,
@@ -54,7 +55,7 @@ import {
 	setupScrollHighlight,
 	refreshCurrentHighlight,
 } from "./ui/panel";
-import { setupHistoryTitleEditing } from "./historyTitles";
+import { setupHistoryTitleEditing } from './historyTitles';
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close
@@ -585,7 +586,9 @@ try {
 		bootstrapDone = true;
 		lastRouteKey = getRouteKey(); // init route key on first load
 		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
-		initFolders(); // Sprint 9: load persisted folder data from storage
+		initFolders()
+			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
+			.catch(() => {}); // fire-and-forget
 		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>

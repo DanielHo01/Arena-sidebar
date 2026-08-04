@@ -40,7 +40,7 @@ export const foldersState = {
 
 // ─── Storage key ────────────────────────────────────────────────────────────────────
 
-const FOLDERS_KEY = "edge-ai-sidebar:folders";
+export const FOLDERS_KEY = "edge-ai-sidebar:folders";
 
 function saveToStorage() {
 	if (!contextValid) return;
@@ -708,4 +708,53 @@ export function upsertSessionMetaFromStore(
 		url,
 	});
 	saveToStorage();
+}
+
+/**
+ * One-time migration: scan chrome.storage.local for legacy historyTitle_* keys and
+ * migrate their values into foldersState.sessions as customTitle. Called once on
+ * bootstrap after initFolders() so that the sessions index is already populated.
+ *
+ * After migration the old keys are deleted so that future startup does not re-migrate.
+ */
+export function migrateHistoryTitles(): Promise<void> {
+	if (
+		typeof chrome === "undefined" ||
+		!chrome.storage ||
+		!chrome.storage.local
+	) {
+		return Promise.resolve();
+	}
+	return new Promise((resolve) => {
+		chrome.storage.local.get(null, (all) => {
+			if (chrome.runtime.lastError) {
+				console.warn("[AI Sidebar] migrateHistoryTitles: storage unavailable");
+				resolve();
+				return;
+			}
+			const keysToRemove: string[] = [];
+			for (const [key, value] of Object.entries(all)) {
+				const match = /^historyTitle_(.+)$/.exec(key);
+				if (match && typeof value === "string" && value.trim()) {
+					const sid = match[1];
+					setSessionCustomTitle(sid, value.trim());
+					keysToRemove.push(key);
+				}
+			}
+			if (keysToRemove.length === 0) {
+				resolve();
+				return;
+			}
+			chrome.storage.local.remove(keysToRemove, () => {
+				if (chrome.runtime.lastError) {
+					console.warn("[AI Sidebar] migrateHistoryTitles: failed to remove old keys");
+				} else {
+					console.log(
+						`[AI Sidebar] migrateHistoryTitles: migrated ${keysToRemove.length} key(s)`,
+					);
+				}
+				resolve();
+			});
+		});
+	});
 }
