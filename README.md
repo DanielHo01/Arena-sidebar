@@ -1,6 +1,6 @@
 # Edge AI Sidebar
 
-> **版本**: 0.2.0 | **构建大小**: ~27 KB (content script) + 3 KB (inject hook)
+> **版本**: 0.2.0 | **构建大小**: ~54 KB gzip:16.5 KB (content script) + 0.9 KB (inject hook)
 
 Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持导出、摘要生成、标题自定义等功能。
 
@@ -12,23 +12,27 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 
 - ✅ 浮动按钮（可拖动位置）
 - ✅ 展开 Rounds 列表（user/assistant 交替分组）
+- ✅ Role-aware preview（用户问 / AI 答双行预览）
 - ✅ 点击跳转 + 滚动高亮（当前 round 自动跟随）
 - ✅ 正序/倒序切换
 - ✅ 实时搜索过滤
-- ✅ 实时检测新消息（MutationObserver + 3 秒兜底轮询）
+- ✅ 实时检测新消息（MutationObserver + 轮询）
+
+### 会话管理
+
+- ✅ **Session Library** — 内嵌 Arena 左侧栏，可展开/折叠
+- ✅ **会话文件夹**（Inbox / Archive，自定义文件夹）
+- ✅ **右键菜单**（Rename / Move to folder）
+- ✅ **标题自定义** — 双击或右键 Rename，统一优先级：customTitle > title > sessionId 前缀
+- ✅ **持久化恢复** — 刷新后恢复 loaded rounds
 
 ### 导出与摘要
 
-- ✅ **导出对话** — JSON / Markdown / 永久链接（复制或下载）
-- ✅ **AI 摘要提示词** — 为每轮生成结构化摘要（可用于复制到其他 AI 继续讨论）
-- ✅ 捕获 API 请求/响应（arena.ai 网络请求详情）
-
-### 辅助功能
-
-- ✅ **自定义标题编辑** — 双击左侧历史会话标题即可重命名
-- ✅ API 配置捕获（提取 API URL、headers、请求体示例）
-- ✅ WebSocket 事件捕获（实时消息事件日志）
-- ✅ 模型名称解析（从 `__NEXT_DATA__` 提取模型 ID → 名称映射）
+- ✅ **导出对话** — JSON / Markdown / 永久链接
+- ✅ **AI 摘要提示词** — 为每轮生成结构化摘要
+- ✅ 捕获 API 请求/响应
+- ✅ API 配置捕获（URL、headers、请求体示例）
+- ✅ WebSocket 事件捕获
 
 ---
 
@@ -49,27 +53,37 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 ```
 D:\edge-ai-sidebar\
 ├── src/
-│   ├── content.ts                  内容脚本 ~45 KB（含完整 UI）
-│   ├── service-worker/             Service Worker（可选扩展）
-│   └── manifest.json               MV3 源 manifest
+│   ├── content.ts                  内容脚本（含完整 UI + preScroll）
+│   ├── conversationStore.ts        消息存储 + rounds 计算
+│   ├── extract.ts                 DOM 消息提取（12 个 selector）
+│   ├── capture.ts                 API / WebSocket 捕获
+│   ├── historyTitles.ts           双击改名 + 自定义标题恢复
+│   ├── folders.ts                 会话文件夹管理 + Session Library
+│   ├── titleResolver.ts          标题解析（customTitle > title > sessionId）
+│   ├── state.ts                  Panel / FAB / Timer 状态
+│   ├── types.ts                  共享类型
+│   ├── rounds.ts                 hiddenRoundIds（纯 Set）
+│   ├── manifest.json              MV3 源 manifest
+│   └── ui/
+│       ├── panel.ts               面板渲染 + reconcileList
+│       ├── fab.ts                浮动按钮
+│       └── modals.ts             导出 / 摘要模态框
 ├── public/
-│   └── icons/                     扩展图标
-├── dist/                          构建产物（直接加载到 Edge）
-│   ├── manifest.json
-│   ├── assets/
-│   │   ├── content.ts-*.js         ~27 kB（内容脚本）
-│   │   └── inject-hook.js-*.js     ~3 kB（MAIN world 注入）
-│   └── public/icons/
+│   └── inject-hook.js            MAIN world 注入（API 拦截）
 ├── scripts/
-│   ├── test-content-extract.cjs   jsdom 单元测试（4 scenarios）
-│   ├── test-round-grouping.cjs     jsdom 单元测试（6 scenarios）
-│   ├── arena-dump.js              Arena DOM dump 工具（手动调试用）
-│   └── e2e-floating.cjs           E2E 浮动按钮测试
+│   ├── test-content-extract.cjs  jsdom 镜像测试
+│   ├── test-round-grouping.cjs  jsdom 镜像测试
+│   ├── test-conversation-store.cjs  jsdom 镜像测试
+│   ├── test-src-rounds.ts        真实源码测试（tsx）
+│   ├── test-src-store.ts         真实源码测试（tsx）
+│   └── test-src-title-resolution.ts  真实源码测试（tsx）
+├── dist/                        构建产物（直接加载到 Edge）
 ├── docs/
-│   └── plan.md                     v0.1 原始规划（已过时）
+│   └── rebaseline-phase10a.md   Phase 10A 死代码清理记录
 ├── vite.config.ts
 ├── package.json
-└── tsconfig.app.json
+├── tsconfig.app.json
+└── tsconfig.test.json           测试脚本类型检查
 ```
 
 ---
@@ -170,20 +184,15 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 ## 自动化测试
 
 ```bash
-# 4 个 extraction 场景
-node scripts/test-content-extract.cjs
-
-# 6 个 round grouping 场景
-node scripts/test-round-grouping.cjs
-
-# 一次跑两个
-npm test
+npm test              # 全套：镜像测试 + 真实源码测试
+npm run test:mirror   # 仅镜像测试（3 suites，20 assertions）
+npm run test:src      # 仅真实源码测试（3 suites，24 assertions）
 ```
 
 **当前状态**：
 
-- ✅ Extraction 4/4 PASS：ChatGPT-style / Arena-class / Arena-data-role / Edge-cases
-- ✅ Round grouping 6/6 PASS：60 alternating → 30 rounds / 0 → 0 / 60 all-assistant → 1 / etc.
+- ✅ Mirror suites 20/20 PASS
+- ✅ Real-source suites 24/24 PASS（computeRounds、conversationStore、resolveSessionTitle）
 
 ---
 
@@ -216,27 +225,23 @@ npm test
 
 ## 架构选择
 
-| 之前（v0.1 构想） | 现在（v0.2 实现） |
-| --- | --- |
-| 大 AI Sidepanel（占屏幕一半） | 小浮动按钮（不占空间） |
-| React + shadcn 12 组件 | Vanilla DOM |
-| Tailwind v4 + Arena tokens | 纯 CSS 变量 + hsl() |
-| chrome.sidePanel API | Shadow DOM 注入页面 |
-| chrome.runtime.sendMessage 跨 context 通信 | 同 context 直接调用 |
-| Service Worker（setPanelBehavior） | 不需要 |
-| 250 kB bundle（原始构想） | 27 kB bundle |
-| 11 项复杂功能 | 核心导航 + 导出 + 摘要 + 标题编辑 |
+| 特性 | 之前（v0.1 构想） | 现在（v0.2 实现） |
+| --- | --- | --- |
+| UI 形态 | 大 AI Sidepanel（占屏幕一半） | 小浮动按钮（不占空间） |
+| 技术栈 | React + shadcn + Tailwind | Vanilla DOM |
+| 注入方式 | chrome.sidePanel API | Shadow DOM 注入 |
+| 存储 | chrome.storage.local 分散 key | foldersState.sessions 统一存储 |
+| 标题来源 | historyTitle_ / sessionMeta.title / round.title 各自独立 | resolveSessionTitle 统一解析 |
+| Bundle | 250+ kB | 54 kB |
 
 ---
 
 ## 已知限制
 
-- 仅支持 arena.ai 的 Direct / Max 模式（不支持 Battle 盲测模式）
+- 仅支持 arena.ai Direct / Max 模式（不支持 Battle 盲测模式）
 - 不支持消息编辑 / 删除 / 新建（只读）
-- 不持久化会话（关闭后重新打开会重新拉取）
-- 不支持图片 / 文件附件的消息预览（仅文本）
-- role 分配用 DOM 位置奇偶（Direct chat 严格交替；Battle/SxS 模式不适用）
 - 自定义标题保存在 `chrome.storage.local`（每个扩展实例独立）
+- 右键 Rename 依赖 `prompt()`（可替换为内联编辑框）
 
 ---
 
