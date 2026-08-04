@@ -410,7 +410,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 				"padding: 6px 6px; border-radius: 5px; text-decoration: none;" +
 				"cursor: pointer; transition: background 0.08s;";
 			const title = document.createElement("span");
-			title.textContent = s.title || "Untitled";
+			title.textContent = resolveSessionTitle(s);
 			title.style.cssText =
 				"font-size: 12px; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
 			item.appendChild(title);
@@ -569,7 +569,7 @@ export function setupHistoryContextMenu(): void {
 		renameItem.addEventListener("click", () => {
 			closeMenu();
 			const currentMeta = foldersState.sessions.get(sessionId);
-			const currentDisplay = resolveSessionTitle(currentMeta ?? null);
+			const currentDisplay = resolveSessionTitle(currentMeta ?? { sessionId });
 			const newTitle = prompt("Rename this session:", currentDisplay);
 			if (newTitle !== null && newTitle.trim()) {
 				setSessionCustomTitle(sessionId, newTitle.trim());
