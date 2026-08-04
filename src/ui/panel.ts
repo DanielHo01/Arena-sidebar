@@ -5,7 +5,7 @@
 //   setupScrollHighlight — attaches scroll-based active round tracking
 
 import type { SidebarRound } from "../types";
-import { roundSummaries, hiddenRoundIds } from "../rounds";
+import { hiddenRoundIds } from "../rounds";
 import { scrollToRound, getMessagesForRound } from "../conversationStore";
 import { panel } from "../state";
 import { conversationStore } from "../conversationStore";
@@ -129,8 +129,7 @@ function createRoundEl(
 	item.dataset.roundId = round.id;
 	item.dataset.roundIdx = String(idx);
 
-	const s = roundSummaries.get(round.id);
-	const currentTitle = s ? s.title : round.title;
+	const currentTitle = round.title;
 
 	// .item-meta: label + hover actions
 	const meta = document.createElement("div");
@@ -231,8 +230,7 @@ function updateRoundEl(el: HTMLElement, round: SidebarRound, idx: number) {
 	}
 	const title = el.querySelector(".item-title") as HTMLElement | null;
 	if (title) {
-		const s = roundSummaries.get(round.id);
-		const currentTitle = s ? s.title : round.title;
+		const currentTitle = round.title;
 		title.textContent = currentTitle;
 		title.title = currentTitle;
 	}

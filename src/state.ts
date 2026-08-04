@@ -65,14 +65,6 @@ export const timers = {
 	refreshInterval: null as ReturnType<typeof setInterval> | null,
 };
 
-// ─── Sprint 2.5: history capture state ──────────────────────────────────────────
-
-export const historyState = {
-	lastTs: 0, // 上一次处理的 history event ts（防重入）
-	status: 0, // 最近一次 history response 的 HTTP status
-	handled: false, // 本次页面会话是否已处理过 history
-};
-
 // ─── Extension context validity (Sprint 7 fix) ─────────────────────────────────────────────
 // Set to false when chrome.runtime.lastError fires; all storage calls check this.
 

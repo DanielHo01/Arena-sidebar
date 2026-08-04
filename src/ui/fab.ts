@@ -1,7 +1,6 @@
 // Floating action button — renders the FAB, handles drag-to-move, and persists position.
 // Public exports:
 //   buildFab       — () => HTMLElement
-//   loadFabPosition — () => void
 //   saveFabPosition — (x: number, y: number) => void
 
 import { fab, panel, contextValid, invalidateContext } from "../state";
@@ -11,27 +10,6 @@ let fabDragX = 0;
 let fabDragY = 0;
 
 // ─── Position persistence ─────────────────────────────────────────────────────────────
-
-export function loadFabPosition() {
-	if (!contextValid) return;
-	if (typeof chrome !== "undefined" && chrome.storage) {
-		try {
-			chrome.storage.local.get(
-				"fabPosition",
-				(r: { fabPosition?: { x: number; y: number } }) => {
-					if (chrome.runtime.lastError) {
-						invalidateContext();
-						return;
-					}
-					if (r.fabPosition && fab.position === null)
-						fab.position = r.fabPosition;
-				},
-			);
-		} catch {
-			/* intentionally empty — extension context invalidated */
-		}
-	}
-}
 
 export function saveFabPosition(x: number, y: number) {
 	fab.position = { x, y };
