@@ -105,6 +105,7 @@ export function addSessionToFolder(
 	foldersState.sessions.set(sessionId, {
 		sessionId: sessionId,
 		title: title || "Untitled",
+		customTitle: existing?.customTitle,
 		folderId: folderId ?? INBOX_ID,
 		createdAt: existing?.createdAt ?? now,
 		updatedAt: now,
@@ -130,6 +131,37 @@ export function getSessionsInFolder(folderId: string): SessionMeta[] {
 	return Array.from(foldersState.sessions.values()).filter(
 		(s) => s.folderId === folderId,
 	);
+}
+
+/** Read session metadata from the in-memory index (populated by initFolders). */
+export function getSessionMeta(sessionId: string): SessionMeta | undefined {
+	return foldersState.sessions.get(sessionId);
+}
+
+/**
+ * Set the user's custom title for a session — the single write path for all user
+ * rename operations (double-click and context-menu rename). Preserves all other
+ * metadata fields including the existing customTitle value.
+ */
+export function setSessionCustomTitle(
+	sessionId: string,
+	customTitle: string,
+): void {
+	const existing = foldersState.sessions.get(sessionId);
+	const now = Date.now();
+	const trimmed = customTitle.trim();
+	foldersState.sessions.set(sessionId, {
+		sessionId,
+		title: existing?.title ?? "未命名会话",
+		customTitle: trimmed || undefined,
+		folderId: existing?.folderId ?? INBOX_ID,
+		roundCount: existing?.roundCount,
+		messageCount: existing?.messageCount,
+		createdAt: existing?.createdAt ?? now,
+		updatedAt: now,
+		url: existing?.url,
+	});
+	saveToStorage();
 }
 
 // ─── Arena DOM Integration ───────────────────────────────────────────────────────────────
@@ -666,6 +698,7 @@ export function upsertSessionMetaFromStore(
 	foldersState.sessions.set(sessionId, {
 		sessionId,
 		title: title || "未命名会话",
+		customTitle: existing?.customTitle,
 		folderId: existing?.folderId ?? INBOX_ID,
 		roundCount,
 		messageCount,

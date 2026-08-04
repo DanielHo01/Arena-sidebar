@@ -4,18 +4,18 @@
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
 
-import { invalidateContext } from "./state";
+import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
+import { resolveSessionTitle } from "./titleResolver";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
-
-function storageKey(sid: string): string {
-	return "historyTitle_" + sid;
-}
+// DEPRECATED: historyTitle_ keys are no longer the canonical title store.
+// Migration: see migrateHistoryTitles() in folders.ts (H5). Writes now go to
+// foldersState.sessions via setSessionCustomTitle; reads go to the same index.
 
 // ─── Title cache ─────────────────────────────────────────────────────────────────────
-// Avoid a chrome.storage.local.get per link per DOM change. Cache is written on
-// successful save and on read; applied idempotently, so a React re-render that
-// resets textContent gets re-corrected without hitting storage again.
+// In-memory cache so that restoreTitle() does not O(N) scan foldersState on every
+// DOM mutation. cacheTitle() is called on every successful save; restoreTitle()
+// reads the cache first (O(1)) before falling back to foldersState.
 
 const titleCache = new Map<string, string>();
 let cacheLoaded = false;
@@ -29,22 +29,13 @@ function cacheTitle(sid: string, title: string): void {
 // DOM change (Arena's sidebar can hold dozens of /c/ links, and the observer fires
 // on every mutation, so per-link get previously caused a storage-call storm).
 function loadTitleCache(): void {
-	if (cacheLoaded || typeof chrome === "undefined" || !chrome.storage) return;
+	if (cacheLoaded) return;
 	cacheLoaded = true;
-	try {
-		chrome.storage.local.get(null, (all) => {
-			if (chrome.runtime.lastError) {
-				invalidateContext();
-				return;
-			}
-			for (const [key, val] of Object.entries(all)) {
-				if (key.startsWith("historyTitle_") && typeof val === "string") {
-					titleCache.set(key.slice("historyTitle_".length), val);
-				}
-			}
-		});
-	} catch (_e) {
-		/* chrome.storage.local.get may fail due to quota or context invalidation */
+	// Populate from the in-memory foldersState index. Safe to call after initFolders().
+	// If initFolders() has not yet completed, this will be a no-op and restoreTitle()
+	// will pick up the session on its next call (e.g. after the observer fires again).
+	for (const meta of foldersState.sessions.values()) {
+		titleCache.set(meta.sessionId, resolveSessionTitle(meta));
 	}
 }
 
@@ -94,7 +85,6 @@ function applyCustomTitle(anchor: Element, customTitle: string) {
 // lastError would otherwise silently kill every restore (and every save below).
 
 function restoreTitle(item: HTMLElement, sid: string): void {
-	const key = storageKey(sid);
 	const cached = titleCache.get(sid);
 	if (cached !== undefined) {
 		if (item.textContent && item.textContent.trim() !== cached) {
@@ -102,22 +92,14 @@ function restoreTitle(item: HTMLElement, sid: string): void {
 		}
 		return;
 	}
-	try {
-		chrome.storage.local.get(key, (r) => {
-			if (chrome.runtime.lastError) {
-				invalidateContext();
-				return;
-			}
-			const custom = (r as Record<string, string>)[key];
-			if (custom) {
-				cacheTitle(sid, custom);
-				if (item.textContent && item.textContent.trim() !== custom) {
-					applyCustomTitle(item, custom);
-				}
-			}
-		});
-	} catch (_e) {
-		/* chrome.storage.local.get may fail due to quota or context invalidation */
+	// cache miss — resolve from the in-memory foldersState index.
+	const meta = getSessionMeta(sid);
+	if (meta) {
+		const title = resolveSessionTitle(meta);
+		if (item.textContent && item.textContent.trim() !== title) {
+			applyCustomTitle(item, title);
+		}
+		titleCache.set(sid, title);
 	}
 }
 
@@ -169,20 +151,8 @@ export function setupHistoryTitleEditing() {
 					if (saved) return;
 					saved = true;
 					const newText = (input.value || "").trim() || oldText;
-					try {
-						chrome.storage.local.set(
-							{ [storageKey(sid)]: newText },
-							() => {
-								if (chrome.runtime.lastError) {
-									invalidateContext();
-									return;
-								}
-							},
-						);
-						cacheTitle(sid, newText);
-					} catch (_e) {
-						/* intentionally empty */
-					}
+					setSessionCustomTitle(sid, newText);
+					cacheTitle(sid, newText);
 					target.textContent = newText;
 				};
 				const cancel = () => {
