@@ -212,7 +212,7 @@ export function extractMessages(): SidebarMessage[] {
 			const id = generateStableId(el, idx);
 			el.setAttribute("data-ai-sidebar-id", id);
 			cachedElements.set(id, el);
-			messages.push({ id, role, content, origin: "dom" });
+			messages.push({ id, role, content, origin: "dom", domId: id });
 		});
 	return messages;
 }

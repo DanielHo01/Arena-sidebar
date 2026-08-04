@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs"
+    "test": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs && node scripts/test-conversation-store.cjs"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",

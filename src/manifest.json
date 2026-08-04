@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "Edge AI Sidebar",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Floating message navigator for arena.ai — click to jump between messages",
 	"permissions": ["storage", "activeTab", "scripting"],
 	"host_permissions": [
