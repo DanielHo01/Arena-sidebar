@@ -57,22 +57,6 @@ export interface SidebarRound {
 	assistantCount?: number;
 }
 
-// ─── Persistence ─────────────────────────────────────────────────────────────────
-
-export interface PersistedConversation {
-	sessionId: string;
-	savedAt: number;
-	messages: SidebarMessage[];
-	rounds: SidebarRound[];
-}
-
-// ─── Store shape ─────────────────────────────────────────────────────────────────
-
-export interface ConversationStoreState {
-	messages: SidebarMessage[];
-	rounds: SidebarRound[];
-}
-
 // ─── Capture types (unchanged — written by inject-hook.js in main world) ───────────
 
 export interface ChatRequest {
@@ -107,27 +91,6 @@ export interface CapturedRound {
 	request: ChatRequest;
 	response: ChatResponse;
 	completed: boolean;
-}
-
-// ─── Panel state ─────────────────────────────────────────────────────────────────
-
-export interface PanelState {
-	isOpen: boolean;
-	reverseOrder: boolean;
-	searchQuery: string;
-	currentRoundIdx: number;
-	highlightInitialized: boolean;
-	isDragging: boolean;
-	isSummarizing: boolean;
-}
-
-// ─── Sprint 2.5: history capture from inject-hook ─────────────────────────────────
-
-export interface HistoryPayload {
-	url: string;
-	status: number;
-	ts: number;
-	body: string;
 }
 
 // ─── Sprint 9: session folder management ──────────────────────────────────────────────────

@@ -14,15 +14,6 @@ export const CONFIG = {
 
 export const cachedElements = new Map<string, Element>();
 
-// ─── Performance revision counters (Phase 2: know where the bottleneck is) ────────────────
-
-export const revision = {
-	dom: 0, // DOM signature changed
-	capture: 0, // capture detected new events
-	store: 0, // store actually changed (messages added/updated)
-	render: 0, // UI actually redrew
-};
-
 // ─── Panel state ──────────────────────────────────────────────────────────────────
 
 export const panel = {
@@ -46,15 +37,7 @@ export const fab = {
 // ─── Capture state ───────────────────────────────────────────────────────────────
 
 export const capture = {
-	apiConfig: null as {
-		url: string;
-		headers: Record<string, string>;
-		bodySample: unknown;
-	} | null,
 	isSummarizing: false,
-	lastExtractTs: 0,
-	lastWsTs: 0,
-	wsEvents: [] as unknown[],
 };
 
 // ─── Timer refs (P1 #3 — replaces unsafe window.__aiSidebar* properties) ──────────

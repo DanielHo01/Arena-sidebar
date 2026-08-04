@@ -1,5 +1,5 @@
-// Network capture — reads arena.ai API/WebSocket data written by inject-hook.js (main world)
-// and exposes it via shared DOM dataset. Runs on its own 2-second polling interval.
+// Network capture — reads arena.ai chat request/response data written by inject-hook.js
+// (main world) via shared DOM dataset. Runs on its own 2-second polling interval.
 //
 // Public exports:
 //   pollCaptures    — () => void  (called every 2s by content.ts)
@@ -7,12 +7,9 @@
 //   modelNameById   — Map<modelId, modelName>
 
 import type { ChatRequest, ChatResponse, CapturedRound } from "./types";
-import { capture } from "./state";
 import { addCapturedMessage } from "./conversationStore";
 
 // ─── DOM dataset keys (written by inject-hook.js in main world) ──────────────────────
-//   document.documentElement.dataset.aiSideApi       — API config
-//   document.documentElement.dataset.aiSideWs        — WebSocket events
 //   document.documentElement.dataset.aiSideRequest   — chat requests
 //   document.documentElement.dataset.aiSideResponse  — chat responses
 
@@ -24,49 +21,10 @@ export const modelNameById = new Map<string, string>();
 let lastRequestTs = 0;
 let lastResponseTs = 0;
 
-// ─── API capture ──────────────────────────────────────────────────────────────────
+// ─── Chat capture ──────────────────────────────────────────────────────────────────
 
 export function pollCaptures() {
-	checkApiCapture();
-	checkWsCapture();
 	checkChatCapture();
-}
-
-function checkApiCapture() {
-	if (capture.apiConfig) return;
-	const raw = document.documentElement.dataset.aiSideApi;
-	if (!raw) return;
-	try {
-		const d = JSON.parse(raw);
-		if (d?.url && d?.bodySample?.messages?.length) {
-			capture.apiConfig = {
-				url: d.url,
-				headers: d.headers || {},
-				bodySample: d.bodySample,
-			};
-		}
-	} catch (_e) {
-		/* intentionally empty — JSON parse / dataset read; no-op when stale */
-	}
-}
-
-// ─── WebSocket capture ─────────────────────────────────────────────────────────────
-
-function checkWsCapture() {
-	const raw = document.documentElement.dataset.aiSideWs;
-	if (!raw) return;
-	try {
-		const ev = JSON.parse(raw);
-		if (ev.ts && ev.ts !== capture.lastWsTs) {
-			capture.lastWsTs = ev.ts;
-			capture.wsEvents.push(ev);
-			if (capture.wsEvents.length > 100)
-				capture.wsEvents.splice(0, capture.wsEvents.length - 100);
-			document.documentElement.dataset.aiSideWs = "";
-		}
-	} catch (_e) {
-		/* intentionally empty — JSON parse / dataset read; no-op when stale */
-	}
 }
 
 /** Add a captured round's user + assistant messages to conversationStore. */

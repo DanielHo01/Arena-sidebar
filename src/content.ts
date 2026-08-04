@@ -37,7 +37,7 @@ import {
 	refreshStore,
 	extractBootstrapMessages,
 } from "./conversationStore";
-import { panel, fab, capture, timers, revision, cachedElements } from "./state";
+import { panel, fab, timers, cachedElements } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
 import {
 	initFolders,
@@ -169,7 +169,6 @@ async function rebuildForCurrentRoute(): Promise<void> {
 		dom: domMsgs,
 		bindAnchors: true,
 	});
-	capture.lastExtractTs = Date.now();
 	// Sprint 5: persist after each rebuild
 	conversationStore.saveToStorage();
 }
@@ -228,19 +227,14 @@ function setupPeriodicPush(refreshUI: () => void) {
 	if (timers.pollInterval !== null || timers.refreshInterval !== null) return;
 	timers.pollInterval = setInterval(() => {
 		if (!panel.isDragging) {
-			const prevCount = conversationStore.messages.length;
 			pollCaptures();
-			const newCount = conversationStore.messages.length;
-			if (newCount !== prevCount) revision.capture++;
 		}
 	}, 2000);
 	timers.refreshInterval = setInterval(() => {
 		if (!panel.isDragging) {
 			const prevCount = conversationStore.messages.length;
 			const domMsgs = extractMessages();
-			if (domMsgs.length > 0) revision.dom++;
 			refreshStore({ dom: domMsgs, bindAnchors: false });
-			if (conversationStore.messages.length !== prevCount) revision.store++;
 			refreshUI();
 			// Sprint 5: persist only when new messages arrived — writing the full
 			// session payload every 30s (even when idle) caused avoidable storage churn.
@@ -411,7 +405,6 @@ let __refreshCount = 0;
 function refreshUI() {
 	const __t0 = performance.now();
 	__refreshCount++;
-	revision.render++;
 	if (!shadowRoot) return;
 
 	// Read from canonical store (updated by bootstrap, capture, or periodic DOM re-scan).
