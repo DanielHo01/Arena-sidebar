@@ -1,3 +1,5 @@
+// NOTE: mirrored-behavior test — does NOT import src/ production code.
+// See docs/rebaseline-phase10a.md §6.
 // Round grouping logic test — simulates the full extraction → role assignment → grouping flow
 // Verifies that 60 alternating messages produce 30 rounds (the expected outcome in arena.ai Direct chat)
 

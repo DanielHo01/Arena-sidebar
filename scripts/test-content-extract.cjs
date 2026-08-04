@@ -1,3 +1,5 @@
+// NOTE: mirrored-behavior test — does NOT import src/ production code.
+// See docs/rebaseline-phase10a.md §6.
 const { JSDOM } = require('jsdom')
 
 const SELECTORS = [
