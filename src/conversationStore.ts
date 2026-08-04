@@ -156,11 +156,14 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 	let currentAssistantCount = 0;
 
 	const pushRound = (r: SidebarRound) => {
-		// Sprint 8: fill preview fields before pushing
-		r.userPreview = currentFirstUser?.content.slice(0, 60) || undefined;
-		r.assistantPreview =
+		// Sprint 8: fill preview fields before pushing — but never clobber values the
+		// caller already set explicitly. The lead-assistant round sets assistantPreview
+		// and assistantCount by hand; currentFirst*/currentAssistantCount are still
+		// null/0 at that point, so plain assignment used to wipe them back.
+		r.userPreview ??= currentFirstUser?.content.slice(0, 60) || undefined;
+		r.assistantPreview ??=
 			currentFirstAssistant?.content.slice(0, 100) || undefined;
-		r.assistantCount = currentAssistantCount;
+		r.assistantCount ??= currentAssistantCount;
 		rounds.push(r);
 	};
 
@@ -203,7 +206,6 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 				hasAnchor: false,
 				userPreview: undefined,
 				assistantPreview: undefined,
-				assistantCount: 0,
 			};
 			pendingLead = null;
 		}
