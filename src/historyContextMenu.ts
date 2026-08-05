@@ -14,6 +14,7 @@ import {
 	addSessionToFolder,
 } from "./foldersStore";
 import { resolveSessionTitle } from "./titleResolver";
+import { applyCustomTitle, updateTitleCache } from "./historyTitles";
 
 // ─── Styles ──────────────────────────────────────────────────────────────────────────
 
@@ -123,12 +124,10 @@ function showContextMenu(link: HTMLAnchorElement, e: MouseEvent) {
 		);
 		const newTitle = prompt("Rename this session:", currentDisplay);
 		if (newTitle !== null && newTitle.trim()) {
-			setSessionCustomTitle(sessionId, newTitle.trim());
-			// Sync: update native history link's title so the rename is visible immediately
-			link.title = newTitle.trim();
-			const titleSpan = link.querySelector("span");
-			if (titleSpan) titleSpan.textContent = newTitle.trim();
-		}
+				setSessionCustomTitle(sessionId, newTitle.trim());
+				updateTitleCache(sessionId, newTitle.trim());
+				applyCustomTitle(link, newTitle.trim());
+			}
 	});
 	menu.appendChild(renameItem);
 

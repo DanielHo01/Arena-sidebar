@@ -3,6 +3,7 @@
 //
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
+//   updateTitleCache — sync titleCache after a rename so restoreTitle does not revert it
 
 import {
 	foldersState,
@@ -43,12 +44,23 @@ function loadTitleCache(): void {
 	}
 }
 
+// ─── Cache sync ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Update titleCache for a session after a rename so restoreTitle() does not revert it.
+ * Call this AFTER setSessionCustomTitle() succeeds.
+ */
+export function updateTitleCache(sessionId: string, customTitle: string): void {
+	const trimmed = customTitle.trim();
+	titleCache.set(sessionId, trimmed || "");
+}
+
 // ─── Apply custom title to an anchor element ─────────────────────────────────────────
 // Only rewrites text, never replaces element structure: overwriting anchor.textContent
 // would destroy React-rendered children (spans, svg) and trigger an infinite
 // re-render loop with Arena's virtual DOM.
 
-function applyCustomTitle(anchor: Element, customTitle: string) {
+export function applyCustomTitle(anchor: Element, customTitle: string) {
 	const candidates = anchor.querySelectorAll<HTMLElement>("span, div, p");
 	let bestCandidate: HTMLElement | null = null;
 	let bestLen = 0;

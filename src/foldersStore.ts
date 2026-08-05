@@ -12,7 +12,7 @@
 //   getSessionMeta           — read single session metadata
 
 import type { SessionFolder, SessionMeta } from "./types";
-import { contextValid } from "./state";
+import { contextValid, revalidateContext } from "./state";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,9 @@ function saveToStorage(): void {
 			() => {
 				if (chrome.runtime.lastError) {
 					// Mark context invalid so future calls bail early
+				} else {
+					// Restore validity after successful write
+					revalidateContext();
 				}
 			},
 		);

@@ -28,6 +28,7 @@ export {
 
 export {
 	ensureArenaFolderEntry,
+	ensureArenaFolderEntryWithRetry,
 	toggleArenaSessionLibrarySection,
 } from "./arenaLibrary";
 

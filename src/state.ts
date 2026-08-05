@@ -57,3 +57,8 @@ export let contextValid = true;
 export function invalidateContext() {
 	contextValid = false;
 }
+
+/** Restore context validity after chrome.runtime.idle. */
+export function revalidateContext() {
+	contextValid = true;
+}

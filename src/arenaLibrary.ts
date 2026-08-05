@@ -42,6 +42,7 @@ const LIBRARY_SECTION_ATTR = "data-ai-sidebar-arena-library-section";
 // ─── Library section state ─────────────────────────────────────────────────────────
 
 let librarySectionOpen = false;
+let _entryRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Build the 🗂 Session Library anchor element.
@@ -225,6 +226,34 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
 	container.appendChild(foldersList);
 	container.appendChild(inputWrap);
 	container.appendChild(sessionsWrap);
+}
+
+/**
+ * Attempt to inject the 🗂 entry, retrying if Arena DOM is not yet available.
+ * Use this instead of ensureArenaFolderEntry when the DOM may still be loading.
+ */
+export function ensureArenaFolderEntryWithRetry(
+	onToggle: () => void,
+	retriesLeft = 10,
+): void {
+	if (_entryRetryTimer) {
+		clearTimeout(_entryRetryTimer);
+		_entryRetryTimer = null;
+	}
+	const container = findArenaQuickNavContainer();
+	if (container) {
+		ensureArenaFolderEntry(onToggle);
+		return;
+	}
+	if (retriesLeft <= 0) {
+		console.warn(
+			"[AI Sidebar] ensureArenaFolderEntry: max retries reached, arena DOM not available",
+		);
+		return;
+	}
+	_entryRetryTimer = setTimeout(() => {
+		ensureArenaFolderEntryWithRetry(onToggle, retriesLeft - 1);
+	}, 500);
 }
 
 /**
