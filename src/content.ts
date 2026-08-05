@@ -184,13 +184,16 @@ let hydrationInFlight: Promise<void> | null = null;
 
 async function hydrateAndRenderCurrentRoute(): Promise<void> {
 	if (hydrationInFlight) {
-		try { await hydrationInFlight; } catch { /* ignore */ }
+		try {
+			await hydrationInFlight;
+		} catch {
+			/* ignore */
+		}
 		return;
 	}
 
 	hydrationInFlight = (async () => {
-		const sessionId =
-			location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
+		const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
 		// Load persisted messages from storage (may be 0 if first visit)
 		if (sessionId) {
 			await conversationStore.loadFromStorage(sessionId);
@@ -198,9 +201,7 @@ async function hydrateAndRenderCurrentRoute(): Promise<void> {
 		// Rebuild session state from DOM + bootstrap (merge with persisted data)
 		await rebuildForCurrentRoute();
 		// Ensure 🗂 entry is injected (retry handles delayed Arena DOM)
-		ensureArenaFolderEntryWithRetry(() =>
-			toggleArenaSessionLibrarySection(),
-		);
+		ensureArenaFolderEntryWithRetry(() => toggleArenaSessionLibrarySection());
 		// Restore custom titles from foldersState index onto Arena DOM
 		setupHistoryTitleEditing();
 		// Render with restored/hydrated data
@@ -624,8 +625,9 @@ try {
 			setupPeriodicPush(refreshUI);
 			setupRscCapture(); // Sprint 2.5: listen for Arena's RSC stream responses
 			// Pre-scroll to load all messages before first extract (DOM-based, not storage).
+			// Note: onDone only calls refreshUI — rebuildForCurrentRoute is handled by the
+			// observer debounce when Arena renders messages into the DOM after scrolling.
 			startPreScroll(() => {
-				rebuildForCurrentRoute(); // extract from DOM + merge with hydrated storage data
 				refreshUI();
 			});
 		}
