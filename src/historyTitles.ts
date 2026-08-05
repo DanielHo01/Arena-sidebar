@@ -1,42 +1,42 @@
-// History title editing — double-click on /c/ sidebar links to rename them.
-// The custom title is persisted in chrome.storage.local.
+// History title editing — double-click on Arena sidebar /c/ links to rename them.
+// Titles are persisted directly to chrome.storage.local under historyTitle_<sid> keys.
+// No external dependency on folders or sessionMeta.
 //
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
 
-import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
-import { resolveSessionTitle } from "./titleResolver";
-
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
-// DEPRECATED: historyTitle_ keys are no longer the canonical title store.
-// Migration: see migrateHistoryTitles() in folders.ts (H5). Writes now go to
-// foldersState.sessions via setSessionCustomTitle; reads go to the same index.
+
+const TITLE_KEY_PREFIX = "historyTitle_";
+
+function titleKey(sid: string): string {
+	return TITLE_KEY_PREFIX + sid;
+}
 
 // ─── Title cache ─────────────────────────────────────────────────────────────────────
-// In-memory cache so that restoreTitle() does not O(N) scan foldersState on every
+// In-memory cache so that restoreTitle() does not O(N) scan storage on every
 // DOM mutation. cacheTitle() is called on every successful save; restoreTitle()
-// reads the cache first (O(1)) before falling back to foldersState.
+// reads the cache first (O(1)) before falling back to chrome.storage.local.
 
 const titleCache = new Map<string, string>();
 let cacheLoaded = false;
 
-function cacheTitle(sid: string, title: string): void {
-	titleCache.set(sid, title);
-}
-
-// Load every historyTitle_* key into the cache in ONE storage call. After this the
+// Load all historyTitle_* keys into the cache in ONE storage call. After this the
 // restore path is pure in-memory — no per-link chrome.storage.local.get on every
 // DOM change (Arena's sidebar can hold dozens of /c/ links, and the observer fires
-// on every mutation, so per-link get previously caused a storage-call storm).
+// on every mutation).
 function loadTitleCache(): void {
 	if (cacheLoaded) return;
 	cacheLoaded = true;
-	// Populate from the in-memory foldersState index. Safe to call after initFolders().
-	// If initFolders() has not yet completed, this will be a no-op and restoreTitle()
-	// will pick up the session on its next call (e.g. after the observer fires again).
-	for (const meta of foldersState.sessions.values()) {
-		titleCache.set(meta.sessionId, resolveSessionTitle(meta));
-	}
+	chrome.storage.local.get(null, (items) => {
+		if (chrome.runtime.lastError) return;
+		for (const [key, value] of Object.entries(items)) {
+			if (key.startsWith(TITLE_KEY_PREFIX) && typeof value === "string" && value) {
+				const sid = key.slice(TITLE_KEY_PREFIX.length);
+				titleCache.set(sid, value);
+			}
+		}
+	});
 }
 
 // ─── Apply custom title to an anchor element ─────────────────────────────────────────
@@ -80,11 +80,10 @@ function applyCustomTitle(anchor: Element, customTitle: string) {
 
 // ─── Restore ─────────────────────────────────────────────────────────────────────────
 // Idempotent: applies custom title only when the visible text differs, so it can be
-// re-run on every DOM change (and after React resets textContent) without side effects.
-// Deliberately does NOT gate on contextValid: a stale flag from one unrelated
-// lastError would otherwise silently kill every restore (and every save below).
+// re-run on every DOM change without side effects.
 
 function restoreTitle(item: HTMLElement, sid: string): void {
+	// Check in-memory cache first (O(1)).
 	const cached = titleCache.get(sid);
 	if (cached !== undefined) {
 		if (item.textContent && item.textContent.trim() !== cached) {
@@ -92,15 +91,17 @@ function restoreTitle(item: HTMLElement, sid: string): void {
 		}
 		return;
 	}
-	// cache miss — resolve from the in-memory foldersState index.
-	const meta = getSessionMeta(sid);
-	if (meta) {
-		const title = resolveSessionTitle(meta);
-		if (item.textContent && item.textContent.trim() !== title) {
-			applyCustomTitle(item, title);
+	// Cache miss — load this specific key from storage.
+	chrome.storage.local.get(titleKey(sid), (items) => {
+		if (chrome.runtime.lastError) return;
+		const stored = items[titleKey(sid)];
+		if (typeof stored === "string" && stored) {
+			titleCache.set(sid, stored);
+			if (item.textContent && item.textContent.trim() !== stored) {
+				applyCustomTitle(item, stored);
+			}
 		}
-		titleCache.set(sid, title);
-	}
+	});
 }
 
 function restoreAllTitles(): void {
@@ -109,6 +110,17 @@ function restoreAllTitles(): void {
 		const href = item.getAttribute("href") || "";
 		const sid = href.match(/\/c\/([^/?]+)/)?.[1];
 		if (sid) restoreTitle(item as HTMLElement, sid);
+	});
+}
+
+// ─── Save ───────────────────────────────────────────────────────────────────────────
+
+function saveTitle(sid: string, title: string): void {
+	// Update in-memory cache immediately.
+	titleCache.set(sid, title);
+	// Persist to chrome.storage.local.
+	chrome.storage.local.set({ [titleKey(sid)]: title }, () => {
+		// Fire-and-forget; no retry needed for title saves.
 	});
 }
 
@@ -147,12 +159,11 @@ export function setupHistoryTitleEditing() {
 				input.select();
 
 				let saved = false;
-				const save = () => {
+				const doSave = () => {
 					if (saved) return;
 					saved = true;
 					const newText = (input.value || "").trim() || oldText;
-					setSessionCustomTitle(sid, newText);
-					cacheTitle(sid, newText);
+					saveTitle(sid, newText);
 					target.textContent = newText;
 				};
 				const cancel = () => {
@@ -160,7 +171,7 @@ export function setupHistoryTitleEditing() {
 					saved = true;
 					target.textContent = oldText;
 				};
-				input.addEventListener("blur", save);
+				input.addEventListener("blur", doSave);
 				input.addEventListener("keydown", (ev) => {
 					ev.stopPropagation();
 					if (ev.key === "Enter") {
@@ -168,7 +179,7 @@ export function setupHistoryTitleEditing() {
 						input.blur();
 					}
 					if (ev.key === "Escape") {
-						input.removeEventListener("blur", save);
+						input.removeEventListener("blur", doSave);
 						cancel();
 					}
 				});

@@ -16,15 +16,6 @@
 //   ui/modals.ts       — export / summary modals
 //   historyTitles.ts    — /c/ link double-click rename
 console.log("[AI Sidebar] content script loaded, modules initializing...");
-// Wrap everything in an IIFE so top-level errors are caught and reported to the console.
-// Wires:
-//   extract.ts      — DOM extraction
-//   rounds.ts       — round grouping
-//   capture.ts      — API/WS/chat capture polling
-//   ui/fab.ts       — floating action button
-//   ui/panel.ts     — panel + list reconciliation
-//   ui/modals.ts    — export/summary modals
-//   folders.ts          — session folder management
 
 import {
 	extractMessages,
@@ -39,14 +30,7 @@ import {
 } from "./conversationStore";
 import { panel, fab, timers, cachedElements } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
-import {
-	initFolders,
-	migrateHistoryTitles,
-	ensureArenaFolderEntry,
-	setupHistoryContextMenu,
-	toggleArenaSessionLibrarySection,
-	setupFoldersStorageSync,
-} from "./folders";
+
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,
@@ -194,9 +178,6 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 					resetSessionState();
 					rebuildForCurrentRoute();
 					isFirstRender = true; // route change → next render should be immediate
-					// Phase 10A: re-inject Arena sidebar entries on route change
-					ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection());
-					setupHistoryContextMenu();
 				}
 				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
 				if (isFirstRender) {
@@ -577,18 +558,8 @@ try {
 		bootstrapDone = true;
 		lastRouteKey = getRouteKey(); // init route key on first load
 		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
-		initFolders()
-			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
-			.catch(() => {}); // fire-and-forget
-		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
-		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
-		queueMicrotask(() =>
-			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),
-		);
-		// Phase 10A: wire right-click context menu to Arena history links
-		setupHistoryContextMenu();
-		// Restore custom history titles immediately (not only after chat-area mutations)
-		setupHistoryTitleEditing();
+		// Restore custom history titles from storage onto Arena sidebar links
+		void setupHistoryTitleEditing();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
 		if (shadowRoot) {

@@ -10,7 +10,6 @@
 
 import type { SidebarMessage, SidebarRound, MessageOrigin } from "./types";
 import { cachedElements, contextValid, invalidateContext } from "./state";
-import { upsertSessionMetaFromStore } from "./folders";
 
 // ─── Stable fingerprint for content matching ────────────────────────────────────────
 
@@ -63,26 +62,6 @@ export const conversationStore = {
 			chrome.storage.local.set({ [key]: payload }, () => {
 				if (chrome.runtime.lastError) {
 					invalidateContext();
-					return;
-				}
-				// Sprint 9: keep sessionMeta in sync (outside callback - fire and forget)
-				// Use page title (character/persona name) as session title
-				const rawTitle = document.title || "";
-				const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
-				const sessionTitle =
-					(pageTitle && pageTitle.length > 1
-						? pageTitle
-						: this.rounds[0]?.title) || "未命名会话";
-				try {
-					upsertSessionMetaFromStore(
-						this.sessionId,
-						sessionTitle,
-						this.rounds.length,
-						this.messages.length,
-						location.href,
-					);
-				} catch {
-					/* folders storage may fail silently */
 				}
 			});
 		} catch {

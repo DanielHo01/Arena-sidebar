@@ -93,28 +93,4 @@ export interface CapturedRound {
 	completed: boolean;
 }
 
-// ─── Sprint 9: session folder management ──────────────────────────────────────────────────
-
-/** A folder that groups sessions. Default folder is "inbox". */
-export interface SessionFolder {
-	id: string;
-	name: string;
-	createdAt: number;
-	updatedAt: number;
-}
-
-/** Lightweight metadata for a persisted session — stored in the session-meta index. */
-export interface SessionMeta {
-	sessionId: string;
-	/** Title shown in the UI — from round title or custom rename */
-	title: string;
-	/** Custom rename set by user (overrides title) */
-	customTitle?: string;
-	folderId: string;
-	roundCount?: number;
-	messageCount?: number;
-	createdAt: number;
-	updatedAt: number;
-	url?: string;
-}
 
