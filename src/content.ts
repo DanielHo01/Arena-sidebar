@@ -20,16 +20,17 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 const PERF = true;
 
 function t0(label: string): number {
-  if (!PERF) return 0;
-  console.log('[Perf] ' + label + ' ->');
-  return performance.now();
+	if (!PERF) return 0;
+	console.log("[Perf] " + label + " ->");
+	return performance.now();
 }
-function t1(label: string, start: number, extra = ''): void {
-  if (!PERF) return;
-  const ms = (performance.now() - start).toFixed(1);
-  console.log('[Perf] ' + label + ' <- ' + ms + 'ms' + (extra ? ' | ' + extra : ''));
+function t1(label: string, start: number, extra = ""): void {
+	if (!PERF) return;
+	const ms = (performance.now() - start).toFixed(1);
+	console.log(
+		"[Perf] " + label + " <- " + ms + "ms" + (extra ? " | " + extra : ""),
+	);
 }
-
 
 import {
 	extractMessages,
@@ -131,8 +132,7 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 // ─── Route-change detection for SPA ────────────────────────────────────────────────
 
 let lastRouteKey = "";
-let isFirstRender = true; // Sprint 3.1: skip debounce on first render
-
+	
 function getRouteKey(): string {
 	const m = location.pathname.match(/^\/c\/([^/?#]+)/);
 	if (m) return "c:" + m[1];
@@ -169,7 +169,7 @@ let hydrationDone = false;
 // Only saves to storage when DOM actually contributed new messages.
 
 function rebuildForCurrentRoute(): void {
-	const _t = t0('rebuildForCurrentRoute');
+	const _t = t0("rebuildForCurrentRoute");
 	const bootstrapMsgs = extractBootstrapMessages();
 	const domMsgs = extractMessages();
 	refreshStore({
@@ -177,8 +177,11 @@ function rebuildForCurrentRoute(): void {
 		dom: domMsgs,
 		bindAnchors: true,
 	});
-	t1('rebuildForCurrentRoute', _t,
-		`bootstrap=${bootstrapMsgs.length} dom=${domMsgs.length} total=${conversationStore.messages.length}`);
+	t1(
+		"rebuildForCurrentRoute",
+		_t,
+		`bootstrap=${bootstrapMsgs.length} dom=${domMsgs.length} total=${conversationStore.messages.length}`,
+	);
 	// Only save when DOM contributed new messages — never overwrite storage with
 	// a blank DOM snapshot during the preScroll window or early hydration.
 	if (domMsgs.length > 0) {
@@ -187,15 +190,105 @@ function rebuildForCurrentRoute(): void {
 }
 
 async function hydrateFromStorage(): Promise<void> {
-	const _t = t0('hydrateFromStorage');
-	if (hydrationDone) { t1('hydrateFromStorage SKIP (done)', _t); return; }
+	const _t = t0("hydrateFromStorage");
+	if (hydrationDone) {
+		t1("hydrateFromStorage SKIP (done)", _t);
+		return;
+	}
 	hydrationDone = true;
 	const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
-	if (!sessionId) { t1('hydrateFromStorage SKIP (no session)', _t); return; }
+	if (!sessionId) {
+		t1("hydrateFromStorage SKIP (no session)", _t);
+		return;
+	}
 	conversationStore.sessionId = sessionId;
 	await conversationStore.loadFromStorage(sessionId);
-	t1('hydrateFromStorage', _t,
-		`msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`);
+	t1(
+		"hydrateFromStorage",
+		_t,
+		`msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`,
+	);
+}
+
+// ─── Refresh scheduler ──────────────────────────────────────────────────────────────────────
+// Replaces the previous nested-debounce pattern (800ms outer + 800ms inner) with a
+// single coherent scheduler that coalesces all mutations into at most one trailing refresh.
+//
+// Invariants:
+//   - Only one pending timer exists at any time (refreshTimer is single-shot)
+//   - If a refresh is already running when the next batch arrives, at most ONE trailing
+//     call is scheduled — no matter how many mutations arrive during execution
+//   - Route changes always cancel the pending timer and immediately hydrate + render
+
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+// "dirty while running" flag — if true, schedule() will queue one trailing pass after
+// the current refresh finishes (instead of spawning multiple passes)
+let refreshDirty = false;
+let refreshRunning = false;
+
+const SCHEDULE_DELAY_MS = 400; // coalescing window — longer than old 250ms, shorter than 800ms
+
+// P5: Layer 1 — ignore mutations inside our own injected DOM and Arena's library UI.
+const SIDEBAR_HOST_ID = "__edge_ai_sidebar_host";
+
+function shouldIgnoreMutation(record: MutationRecord): boolean {
+	const target = record.target as Node | null;
+	if (!target || !(target instanceof Node)) return true;
+
+	// P5-Layer1: skip everything inside our own shadow/host DOM
+	const host = document.getElementById(SIDEBAR_HOST_ID);
+	if (host && host.contains(target)) return true;
+
+	return false;
+}
+
+function scheduleRefresh(opts: { reason: string; immediate?: boolean }): void {
+	const { reason, immediate } = opts;
+
+	// Route-change path: cancel everything and go immediate
+	if (immediate) {
+		if (refreshTimer !== null) {
+			clearTimeout(refreshTimer);
+			refreshTimer = null;
+		}
+		// If a refresh is currently running, mark dirty so we get one trailing pass
+		if (refreshRunning) {
+			refreshDirty = true;
+			return;
+		}
+		// Nothing running — execute synchronously
+		runRefresh(reason);
+		return;
+	}
+
+	// Already have a pending timer — just mark dirty (no extra scheduling)
+	if (refreshTimer !== null) {
+		return;
+	}
+
+	refreshTimer = setTimeout(() => {
+		refreshTimer = null;
+		runRefresh(reason);
+	}, SCHEDULE_DELAY_MS);
+}
+
+function runRefresh(reason: string): void {
+	if (panel.isDragging || preScrollActive) return;
+
+	refreshRunning = true;
+	try {
+		setupHistoryTitleEditing();
+		rebuildForCurrentRoute();
+		refreshUI();
+	} finally {
+		refreshRunning = false;
+	}
+
+	// If mutations arrived while we were refreshing, schedule exactly one trailing pass
+	if (refreshDirty) {
+		refreshDirty = false;
+		scheduleRefresh({ reason: "trailing-after-" + reason });
+	}
 }
 
 // ─── DOM extraction (no unconditional storage overwrite) ───────────────────────────────────
@@ -206,36 +299,19 @@ let observer: MutationObserver | null = null;
 
 function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 	if (observer) observer.disconnect();
-	observer = new MutationObserver(() => {
+	observer = new MutationObserver((mutations) => {
 		if (panel.isDragging) return;
-		if (timers.debounce !== null) clearTimeout(timers.debounce);
-		// P4 fix: 800ms debounce — Arena typing causes dense characterData mutations;
-		// 250ms was too short and stacked multiple extract rebuilds.
-		// Sprint 3.1: skip debounce on first render so panel appears instantly.
-		timers.debounce = setTimeout(() => {
-			if (!panel.isDragging && !preScrollActive) {
-				// Sprint 3.2: detect route change and rebuild store
-				const nextKey = getRouteKey();
-				if (nextKey !== lastRouteKey) {
-					resetSessionState();
-					// C5: re-hydrate from storage on route change so the panel shows cached
-					// content immediately, even before Arena has rendered the new chat DOM.
-					void hydrateFromStorage().then(() => refreshUI());
-					isFirstRender = true; // route change → next render should be immediate
-				}
-				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
-				if (isFirstRender) {
-					isFirstRender = false;
-					refreshUI(); // instant on first render — no debounce wait
-				} else {
-					if (timers.debounce !== null) clearTimeout(timers.debounce);
-					timers.debounce = setTimeout(() => {
-						isFirstRender = false;
-						refreshUI();
-					}, 800);
-				}
-			}
-		}, 800);
+		// P5-Layer2: fast-path — skip entirely if all mutations are inside our own DOM
+		if (mutations.every(shouldIgnoreMutation)) return;
+		// P5-Layer3: route-change detection
+		const nextKey = getRouteKey();
+		if (nextKey !== lastRouteKey) {
+			resetSessionState();
+			void hydrateFromStorage().then(() => refreshUI());
+			scheduleRefresh({ reason: "route-change", immediate: true });
+			return;
+		}
+		scheduleRefresh({ reason: "observer" });
 	});
 	// P2 fix: observe only the chat container, not the entire document.body.
 	// Cascade fallback: precise → main → body (avoids missing messages on structural changes).
@@ -322,12 +398,12 @@ function peekScrollContainer(): HTMLElement | null {
 }
 
 function startPreScroll(onDone: () => void) {
-	console.log('[Perf] startPreScroll SKIP (already done)');
+	console.log("[Perf] startPreScroll SKIP (already done)");
 	if (preScrollDone) {
 		onDone();
 		return;
 	}
-	console.log('[Perf] startPreScroll: looking for scroll container...');
+	console.log("[Perf] startPreScroll: looking for scroll container...");
 	const container = findScrollContainer();
 	if (!container) {
 		// Arena's React renders the scroll container after the body exists, so
@@ -358,8 +434,10 @@ function startPreScroll(onDone: () => void) {
 	// need the full list extracted. If the container isn't virtualized (fits on
 	// screen), skip entirely — no scroll, no extract, no signature burn.
 	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[Perf] startPreScroll: skipped, container not virtualized — calling rebuild anyway");
-					rebuildForCurrentRoute();
+		console.log(
+			"[Perf] startPreScroll: skipped, container not virtualized — calling rebuild anyway",
+		);
+		rebuildForCurrentRoute();
 		preScrollDone = true;
 		onDone();
 		return;
@@ -427,7 +505,7 @@ function countRenderedMessages(): number {
 }
 
 function refreshUI() {
-	const _t = t0('refreshUI');
+	const _t = t0("refreshUI");
 	if (!shadowRoot) return;
 
 	// Read from canonical store (updated by bootstrap or DOM re-scan).
@@ -450,70 +528,70 @@ function refreshUI() {
 		const titleEl = shadowRoot.querySelector(".panel-title");
 		if (titleEl) titleEl.textContent = storeRounds.length + " loaded rounds";
 		fab.prevRoundIds = newIds;
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
-	t1('refreshUI', _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
+		t1("refreshUI", _t, `returns early`);
 		return;
 	}
 
@@ -577,7 +655,11 @@ function refreshUI() {
 		);
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
-	t1('refreshUI', _t, `msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`);
+		t1(
+			"refreshUI",
+			_t,
+			`msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`,
+		);
 	}
 }
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
@@ -639,7 +721,6 @@ function loadFabPosition() {
 		);
 	}
 }
-
 
 // Wrap bootstrap in try-catch so any module-level error is caught.
 try {
