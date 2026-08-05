@@ -1,12 +1,13 @@
-// Panel — sidebar panel, round list reconciliation, and scroll highlight tracking.
+// Panel — minimal bookmark navigator for Arena sessions.
 // Public exports:
 //   ensurePanelSkeleton — builds or updates the panel DOM
 //   reconcileList       — diffs round list and updates DOM
 //   setupScrollHighlight — attaches scroll-based active round tracking
+//   refreshCurrentHighlight — applies current-round CSS class
 
 import type { SidebarRound } from "../types";
 import { hiddenRoundIds } from "../rounds";
-import { scrollToRound, getMessagesForRound } from "../conversationStore";
+import { scrollToRound } from "../conversationStore";
 import { panel } from "../state";
 import { UI_STYLES, ICON_X_SVG } from "./styles";
 
@@ -104,7 +105,7 @@ export function reconcileList(
 	filtered.forEach((round, idx) => {
 		let el = byId.get(round.id);
 		if (!el) {
-			el = createRoundEl(round, idx, _refreshUI);
+			el = createRoundEl(round, idx);
 		} else {
 			updateRoundEl(el, round, idx);
 		}
@@ -114,145 +115,94 @@ export function reconcileList(
 	});
 }
 
-// ─── Round element ──────────────────────────────────────────────────────────────────
+// ─── Round element — compact mixed outline ─────────────────────────────────────────
+// Structure: .round-num | .main-text | .sub-text
+// No action buttons — keeps items clean and compact.
 
-// Sprint 4: DeepSeek-style round item — .item-meta (label + actions) + .item-title
-function createRoundEl(
-	round: SidebarRound,
-	idx: number,
-	refreshUI: () => void,
-): HTMLElement {
+function createRoundEl(round: SidebarRound, idx: number): HTMLElement {
 	const item = document.createElement("div");
 	item.className = "item";
 	item.dataset.roundId = round.id;
 	item.dataset.roundIdx = String(idx);
 
-	const currentTitle = round.title;
+	// Round number badge — tiny, muted
+	const num = document.createElement("span");
+	num.className = "round-num";
+	num.textContent = String(idx + 1);
+	item.appendChild(num);
 
-	// .item-meta: label + hover actions
-	const meta = document.createElement("div");
-	meta.className = "item-meta";
+	// Main text: userPreview > title > "Round N"
+	const main = document.createElement("span");
+	main.className = "main-text";
+	const mainText =
+		round.userPreview?.trim() ||
+		round.title?.trim() ||
+		`Round ${idx + 1}`;
+	main.textContent = mainText;
+	main.title = mainText;
+	item.appendChild(main);
 
-	const metaLabel = document.createElement("span");
-	metaLabel.className = "item-meta-label";
-	// Sprint 8: show assistantCount when > 1
-	const metaLabelText =
-		round.assistantCount && round.assistantCount > 1
-			? `Round ${idx + 1} · ${round.assistantCount} responses`
-			: `Round ${idx + 1}`;
-	metaLabel.textContent = metaLabelText;
-
-	const actions = document.createElement("span");
-	actions.className = "item-actions";
-
-	// Copy button
-	const copyBtn = document.createElement("button");
-	copyBtn.className = "item-action";
-	copyBtn.textContent = "📋";
-	copyBtn.title = "Copy round content";
-	copyBtn.onclick = (e) => {
-		e.stopPropagation();
-		const roundMsgs = getMessagesForRound(round.id);
-		const txt = roundMsgs.map((m) => `[${m.role}] ${m.content}`).join("\n\n");
-		if (txt)
-			navigator.clipboard.writeText(txt).then(() => {
-				copyBtn.textContent = "✅";
-				setTimeout(() => {
-					copyBtn.textContent = "📋";
-				}, 1200);
-			});
-	};
-
-	// Hide button
-	const hideBtn = document.createElement("button");
-	hideBtn.className = "item-action";
-	hideBtn.textContent = "✕";
-	hideBtn.title = "Hide this round";
-	hideBtn.onclick = (e) => {
-		e.stopPropagation();
-		hiddenRoundIds.add(round.id);
-		refreshUI();
-	};
-
-	actions.appendChild(copyBtn);
-	actions.appendChild(hideBtn);
-	meta.appendChild(metaLabel);
-	meta.appendChild(actions);
-
-	// .item-title — primary text (userPreview, with title as fallback)
-	const title = document.createElement("div");
-	title.className = "item-title";
-	title.textContent = currentTitle;
-	title.title = currentTitle;
-
-	// Sprint 8: .item-assistant-preview
-	const assistantPreview = document.createElement("div");
-	assistantPreview.className = "item-assistant-preview";
+	// Sub text: assistant preview (muted secondary line)
+	const sub = document.createElement("span");
+	sub.className = "sub-text";
 	if (round.assistantPreview) {
 		const prefix =
 			round.assistantCount && round.assistantCount > 1
-				? `${round.assistantCount} responses · `
+				? `${round.assistantCount} replies · `
 				: "";
-		assistantPreview.textContent = prefix + round.assistantPreview;
-		assistantPreview.title = round.assistantPreview;
+		sub.textContent = prefix + round.assistantPreview;
+		sub.title = round.assistantPreview;
 	} else {
-		// No assistant yet — show generating placeholder
-		assistantPreview.textContent = "Generating…";
-		assistantPreview.title = "Waiting for assistant response…";
+		sub.textContent = "Waiting…";
+		sub.title = "Waiting for response…";
 	}
+	item.appendChild(sub);
 
-	item.appendChild(meta);
-	item.appendChild(title);
-	item.appendChild(assistantPreview);
-
-	const isCharacterChat = /^\/c\//.test(location.pathname);
+	// Click to jump
 	item.onclick = () => {
 		scrollToRound(round.id);
 		panel.currentRoundIdx = idx;
-		if (!isCharacterChat) panel.isOpen = false;
-		refreshUI();
 	};
 
 	return item;
 }
 
-// Sprint 4/8: updateRoundEl for .item-meta + .item-title + .item-assistant-preview
 function updateRoundEl(el: HTMLElement, round: SidebarRound, idx: number) {
-	const metaLabel = el.querySelector(".item-meta-label");
-	if (metaLabel) {
-		const metaLabelText =
-			round.assistantCount && round.assistantCount > 1
-				? `Round ${idx + 1} · ${round.assistantCount} responses`
-				: `Round ${idx + 1}`;
-		metaLabel.textContent = metaLabelText;
+	// Round number
+	const numEl = el.querySelector(".round-num");
+	if (numEl) numEl.textContent = String(idx + 1);
+
+	// Main text
+	const mainEl = el.querySelector(".main-text") as HTMLElement | null;
+	if (mainEl) {
+		const mainText =
+			round.userPreview?.trim() ||
+			round.title?.trim() ||
+			`Round ${idx + 1}`;
+		mainEl.textContent = mainText;
+		mainEl.title = mainText;
 	}
-	const title = el.querySelector(".item-title") as HTMLElement | null;
-	if (title) {
-		const currentTitle = round.title;
-		title.textContent = currentTitle;
-		title.title = currentTitle;
-	}
-	// Sprint 8: update assistant preview
-	const assistantEl = el.querySelector(
-		".item-assistant-preview",
-	) as HTMLElement | null;
-	if (assistantEl) {
+
+	// Sub text
+	const subEl = el.querySelector(".sub-text") as HTMLElement | null;
+	if (subEl) {
 		if (round.assistantPreview) {
 			const prefix =
 				round.assistantCount && round.assistantCount > 1
-					? `${round.assistantCount} responses · `
+					? `${round.assistantCount} replies · `
 					: "";
-			assistantEl.textContent = prefix + round.assistantPreview;
-			assistantEl.title = round.assistantPreview;
+			subEl.textContent = prefix + round.assistantPreview;
+			subEl.title = round.assistantPreview;
 		} else {
-			assistantEl.textContent = "Generating…";
-			assistantEl.title = "Waiting for assistant response…";
+			subEl.textContent = "Waiting…";
+			subEl.title = "Waiting for response…";
 		}
 	}
+
 	el.dataset.roundIdx = String(idx);
 }
 
-// ─── Panel skeleton ─────────────────────────────────────────────────────────────────────
+// ─── Panel skeleton — minimal header ─────────────────────────────────────────────
 
 export function ensurePanelSkeleton(
 	shadowRoot: ShadowRoot,
@@ -263,90 +213,24 @@ export function ensurePanelSkeleton(
 	let panelEl = shadowRoot.querySelector(".panel") as HTMLElement | null;
 	if (panelEl) {
 		const titleEl = panelEl.querySelector(".panel-title");
-		if (titleEl) titleEl.textContent = roundsCount + " loaded rounds";
+		if (titleEl) titleEl.textContent = roundsCount + " rounds";
 		return panelEl;
 	}
 
 	panelEl = document.createElement("div");
 	panelEl.className = "panel";
-	panelEl.setAttribute("data-ai-sidebar-panel", "1"); // Sprint 4: mark for debugging
+	panelEl.setAttribute("data-ai-sidebar-panel", "1");
 
-	// Header
+	// Minimal header: title + ghost close
 	const header = document.createElement("div");
 	header.className = "header";
 
 	const title = document.createElement("span");
 	title.className = "panel-title";
-	title.textContent = roundsCount + " loaded rounds";
+	title.textContent = roundsCount + " rounds";
 	header.appendChild(title);
 
-	const makeHeaderBtn = (text: string, title: string, onclick: () => void) => {
-		const btn = document.createElement("button");
-		btn.className = "summary-btn";
-		btn.textContent = text;
-		btn.title = title;
-		btn.onclick = onclick;
-		return btn;
-	};
-
-	// All action buttons wrapped in header-actions
-	const headerActions = document.createElement("div");
-	headerActions.className = "header-actions";
-
-	// Order toggle
-	const orderBtn = makeHeaderBtn(
-		panel.reverseOrder ? "🔃" : "🔄",
-		"Newest first (click to reverse)",
-		() => {
-			panel.reverseOrder = !panel.reverseOrder;
-			refreshUI();
-		},
-	);
-	headerActions.appendChild(orderBtn);
-
-	// Sprint 3.1: Scan button — auto-scroll up to trigger Arena loading older messages
-	const isCharacterChat = /^\/c\//.test(location.pathname);
-	if (isCharacterChat) {
-		let scanning = false;
-		const scanBtn = makeHeaderBtn("⤒", "Scan older loaded history", () => {
-			if (scanning) return;
-			scanning = true;
-			const startY = window.scrollY;
-			let idleTicks = 0;
-			let steps = 0;
-			let lastCount = document.querySelectorAll("[data-ai-sidebar-id]").length;
-
-			const timer = window.setInterval(() => {
-				window.scrollBy({ top: -700, behavior: "auto" });
-				steps++;
-
-				window.setTimeout(() => {
-					const nextCount = document.querySelectorAll(
-						"[data-ai-sidebar-id]",
-					).length;
-					if (nextCount > lastCount) {
-						lastCount = nextCount;
-						idleTicks = 0;
-					} else {
-						idleTicks++;
-					}
-
-					if (window.scrollY <= 0 || idleTicks >= 4 || steps >= 10) {
-						clearInterval(timer);
-						window.setTimeout(() => {
-							window.scrollTo({ top: startY, behavior: "auto" });
-							scanning = false;
-						}, 250);
-					}
-				}, 220);
-			}, 650);
-		});
-		headerActions.appendChild(scanBtn);
-	}
-
-	header.appendChild(headerActions);
-
-	// Close button
+	// Ghost close — barely visible until hovered
 	const closeBtn = document.createElement("button");
 	closeBtn.className = "close-btn";
 	closeBtn.setAttribute("aria-label", "Close");
@@ -359,14 +243,13 @@ export function ensurePanelSkeleton(
 		refreshUI();
 	};
 	header.appendChild(closeBtn);
-
 	panelEl.appendChild(header);
 
-	// Search input
+	// Compact search
 	const searchInput = document.createElement("input");
 	searchInput.className = "search-input";
 	searchInput.type = "text";
-	searchInput.placeholder = "Search rounds...";
+	searchInput.placeholder = "Search…";
 	searchInput.oninput = () => {
 		panel.searchQuery = searchInput.value.toLowerCase().trim();
 		refreshUI();

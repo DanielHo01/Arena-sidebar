@@ -1,7 +1,7 @@
 {
   "name": "edge-ai-sidebar",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0-slim",
   "type": "module",
   "description": "Floating message navigator for arena.ai — vanilla Shadow DOM UI",
   "scripts": {

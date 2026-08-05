@@ -1,8 +1,8 @@
 # Edge AI Sidebar
 
-> **版本**: 0.2.0 | **构建大小**: ~54 KB gzip:16.5 KB (content script) + 0.9 KB (inject hook)
+> **版本**: 0.3.0-slim | **构建大小**: ~33 KB gzip:10.2 KB (content script) + 0.9 KB (inject hook)
 
-Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持导出、摘要生成、标题自定义等功能。
+Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持双击标题重命名、历史缓存秒开。
 
 ---
 
@@ -18,21 +18,20 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ 实时搜索过滤
 - ✅ 实时检测新消息（MutationObserver + 轮询）
 
-### 会话管理
+### 会话标题
 
-- ✅ **Session Library** — 内嵌 Arena 左侧栏，可展开/折叠
-- ✅ **会话文件夹**（Inbox / Archive，自定义文件夹）
-- ✅ **右键菜单**（Rename / Move to folder）
-- ✅ **标题自定义** — 双击或右键 Rename，统一优先级：customTitle > title > sessionId 前缀
-- ✅ **持久化恢复** — 刷新后恢复 loaded rounds
+- ✅ **双击标题重命名** — 双击 Arena 左侧栏 `/c/` 会话链接，自定义标题
+- ✅ **持久化恢复** — 刷新后秒开已加载的历史会话
 
-### 导出与摘要
+### 核心导航
 
-- ✅ **导出对话** — JSON / Markdown / 永久链接
-- ✅ **AI 摘要提示词** — 为每轮生成结构化摘要
-- ✅ 捕获 API 请求/响应
-- ✅ API 配置捕获（URL、headers、请求体示例）
-- ✅ WebSocket 事件捕获
+- ✅ 浮动按钮（可拖动位置）
+- ✅ 展开 Rounds 列表（user/assistant 交替分组）
+- ✅ Role-aware preview（用户问 / AI 答双行预览）
+- ✅ 点击跳转 + 滚动高亮（当前 round 自动跟随）
+- ✅ 正序/倒序切换
+- ✅ 实时搜索过滤
+- ✅ Scan 按钮 — 上滚加载更早的历史消息
 
 ---
 
@@ -53,21 +52,17 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 ```
 D:\edge-ai-sidebar\
 ├── src/
-│   ├── content.ts                  内容脚本（含完整 UI + preScroll）
-│   ├── conversationStore.ts        消息存储 + rounds 计算
+│   ├── content.ts                  内容脚本（bootstrap + observer + preScroll）
+│   ├── conversationStore.ts        单一真相源：消息 + rounds + 持久化
 │   ├── extract.ts                 DOM 消息提取（12 个 selector）
-│   ├── capture.ts                 API / WebSocket 捕获
-│   ├── historyTitles.ts           双击改名 + 自定义标题恢复
-│   ├── folders.ts                 会话文件夹管理 + Session Library
-│   ├── titleResolver.ts          标题解析（customTitle > title > sessionId）
-│   ├── state.ts                  Panel / FAB / Timer 状态
-│   ├── types.ts                  共享类型
-│   ├── rounds.ts                 hiddenRoundIds（纯 Set）
-│   ├── manifest.json              MV3 源 manifest
+│   ├── historyTitles.ts           双击改名：historyTitle_<sid> 直接存储
+│   ├── state.ts                   Panel / FAB / Timer 状态
+│   ├── types.ts                   共享类型
+│   ├── rounds.ts                  hiddenRoundIds（纯 Set）
+│   ├── manifest.json               MV3 源 manifest
 │   └── ui/
-│       ├── panel.ts               面板渲染 + reconcileList
-│       ├── fab.ts                浮动按钮
-│       └── modals.ts             导出 / 摘要模态框
+│       ├── panel.ts                面板渲染 + reconcileList + scan
+│       └── fab.ts                 浮动按钮
 ├── public/
 │   └── inject-hook.js            MAIN world 注入（API 拦截）
 ├── scripts/
