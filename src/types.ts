@@ -17,7 +17,7 @@ export type ChatRole = "user" | "assistant" | "system";
 export type MessageOrigin = "bootstrap" | "capture" | "dom";
 
 // ─── Unified message type ──────────────────────────────────────────────────────────
-// Used everywhere a message appears: extract → store → panel → modals.
+// Used everywhere a message appears: extract → store → panel.
 // Supersedes: CanonicalMessage, ExtractedMessage (now aliases below).
 
 export interface SidebarMessage {

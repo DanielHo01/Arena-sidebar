@@ -13,7 +13,6 @@
 //   conversationStore.ts — merge + persist + bind
 //   ui/panel.ts         — panel skeleton, round items, reconciliation
 //   ui/fab.ts          — FAB + drag
-//   ui/modals.ts       — export / summary modals
 //   historyTitles.ts    — /c/ link double-click rename
 console.log("[AI Sidebar] content script loaded, modules initializing...");
 
