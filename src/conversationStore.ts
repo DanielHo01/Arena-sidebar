@@ -78,6 +78,7 @@ export const conversationStore = {
 		sessionId: string,
 	): Promise<{ msgs: number; rounds: number } | null> {
 		if (!contextValid) return Promise.resolve(null);
+		const _t = typeof performance !== 'undefined' ? performance.now() : Date.now();
 		if (!sessionId) return Promise.resolve(null);
 		if (typeof chrome === "undefined" || !chrome.storage)
 			return Promise.resolve(null);
@@ -117,6 +118,8 @@ export const conversationStore = {
 			} catch {
 				/* intentionally empty — extension context invalidated */
 				resolve(null);
+			const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _t;
+				console.log('[Perf] loadFromStorage <- ' + ms.toFixed(1) + 'ms | done');
 			}
 		});
 	},

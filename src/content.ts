@@ -15,6 +15,22 @@
 //   historyTitles.ts    — /c/ link double-click rename
 console.log("[AI Sidebar] content script loaded, modules initializing...");
 
+// ─── Performance instrumentation ─────────────────────────────────────────────────────────────
+// Set to false to disable all perf logging in one place.
+const PERF = true;
+
+function t0(label: string): number {
+  if (!PERF) return 0;
+  console.log('[Perf] ' + label + ' ->');
+  return performance.now();
+}
+function t1(label: string, start: number, extra = ''): void {
+  if (!PERF) return;
+  const ms = (performance.now() - start).toFixed(1);
+  console.log('[Perf] ' + label + ' <- ' + ms + 'ms' + (extra ? ' | ' + extra : ''));
+}
+
+
 import {
 	extractMessages,
 	resetExtractState,
@@ -147,17 +163,15 @@ function resetSessionState(): void {
 let hydrationDone = false;
 
 async function hydrateFromStorage(): Promise<void> {
-	if (hydrationDone) return;
+	const _t = t0('hydrateFromStorage');
+	if (hydrationDone) { t1('hydrateFromStorage SKIP (done)', _t); return; }
 	hydrationDone = true;
-	const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
-	if (!sessionId) return;
+	const sessionId = location.pathname.match(/^\/c\/([^\/?#]+)/)?.[1] ?? "";
+	if (!sessionId) { t1('hydrateFromStorage SKIP (no session)', _t); return; }
 	conversationStore.sessionId = sessionId;
 	await conversationStore.loadFromStorage(sessionId);
-	console.log(
-		"[AI Sidebar] hydration: restored",
-		conversationStore.messages.length,
-		"messages from storage",
-	);
+	t1('hydrateFromStorage', _t,
+		`msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`);
 }
 
 // ─── DOM extraction (no unconditional storage overwrite) ───────────────────────────────────
@@ -284,10 +298,12 @@ function peekScrollContainer(): HTMLElement | null {
 }
 
 function startPreScroll(onDone: () => void) {
+	console.log('[Perf] startPreScroll SKIP (already done)');
 	if (preScrollDone) {
 		onDone();
 		return;
 	}
+	console.log('[Perf] startPreScroll: looking for scroll container...');
 	const container = findScrollContainer();
 	if (!container) {
 		// Arena's React renders the scroll container after the body exists, so
@@ -303,7 +319,7 @@ function startPreScroll(onDone: () => void) {
 					startPreScroll(onDone);
 				} else {
 					console.log(
-						"[AI Sidebar] preScroll: gave up, no container after retries",
+						"[Perf] startPreScroll: gave up, no container",
 					);
 					preScrollDone = true;
 					onDone();
@@ -316,7 +332,7 @@ function startPreScroll(onDone: () => void) {
 	// need the full list extracted. If the container isn't virtualized (fits on
 	// screen), skip entirely — no scroll, no extract, no signature burn.
 	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
+		console.log("[Perf] startPreScroll: skipped, container not virtualized");
 		preScrollDone = true;
 		onDone();
 		return;
@@ -355,7 +371,7 @@ function startPreScroll(onDone: () => void) {
 			clearInterval(preScrollInterval);
 			preScrollInterval = null;
 			preScrollActive = false;
-			console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
+			console.log("[Perf] startPreScroll: done, messages=" + lastMsgCount);
 			setTimeout(() => {
 				container.scrollTop = 0;
 				preScrollDone = true;
@@ -384,6 +400,7 @@ function countRenderedMessages(): number {
 }
 
 function refreshUI() {
+	const _t = t0('refreshUI');
 	if (!shadowRoot) return;
 
 	// Read from canonical store (updated by bootstrap or DOM re-scan).
@@ -406,6 +423,70 @@ function refreshUI() {
 		const titleEl = shadowRoot.querySelector(".panel-title");
 		if (titleEl) titleEl.textContent = storeRounds.length + " loaded rounds";
 		fab.prevRoundIds = newIds;
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
+	t1('refreshUI', _t, `returns early`);
 		return;
 	}
 
@@ -469,6 +550,7 @@ function refreshUI() {
 		);
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
+	t1('refreshUI', _t, `msgs=${conversationStore.messages.length} rounds=${conversationStore.rounds.length}`);
 	}
 }
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
@@ -530,6 +612,7 @@ function loadFabPosition() {
 		);
 	}
 }
+
 
 // Wrap bootstrap in try-catch so any module-level error is caught.
 try {
