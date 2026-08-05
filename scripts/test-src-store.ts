@@ -60,7 +60,10 @@ run("getMessagesForRound returns user + its assistant replies", () => {
 	});
 	const msgs = getMessagesForRound("u1");
 	assert.equal(msgs.length, 2);
-	assert.deepEqual(msgs.map((m) => m.id), ["u1", "a1"]);
+	assert.deepEqual(
+		msgs.map((m) => m.id),
+		["u1", "a1"],
+	);
 });
 
 run("getMessagesForRound for last round reaches end of store", () => {
@@ -75,7 +78,10 @@ run("getMessagesForRound for last round reaches end of store", () => {
 	});
 	const msgs = getMessagesForRound("u2");
 	assert.equal(msgs.length, 1);
-	assert.deepEqual(msgs.map((m) => m.id), ["u2"]);
+	assert.deepEqual(
+		msgs.map((m) => m.id),
+		["u2"],
+	);
 });
 
 run("bindDomAnchors assigns domId from cachedElements by fingerprint", () => {
@@ -84,9 +90,10 @@ run("bindDomAnchors assigns domId from cachedElements by fingerprint", () => {
 	// Fake DOM element — only fields bindDomAnchors reads are needed.
 	const fakeEl = { isConnected: true, textContent: "  hello   world  " };
 	cachedElements.set("el-1", fakeEl as unknown as Element);
-	refreshStore(
-		{ dom: [{ id: "m1", role: "user", content: "hello world" }], bindAnchors: false },
-	);
+	refreshStore({
+		dom: [{ id: "m1", role: "user", content: "hello world" }],
+		bindAnchors: false,
+	});
 	bindDomAnchors();
 	assert.equal(conversationStore.messages[0].domId, "el-1");
 });
@@ -96,9 +103,10 @@ run("bindDomAnchors clears domIds whose element is disconnected", () => {
 	cachedElements.clear();
 	const fakeEl = { isConnected: true, textContent: "abc def" };
 	cachedElements.set("el-1", fakeEl as unknown as Element);
-	refreshStore(
-		{ dom: [{ id: "m1", role: "user", content: "abc def" }], bindAnchors: false },
-	);
+	refreshStore({
+		dom: [{ id: "m1", role: "user", content: "abc def" }],
+		bindAnchors: false,
+	});
 	bindDomAnchors();
 	assert.equal(conversationStore.messages[0].domId, "el-1");
 	// Simulate the element being recycled from the DOM: replace the cache

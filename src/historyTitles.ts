@@ -31,7 +31,11 @@ function loadTitleCache(): void {
 	chrome.storage.local.get(null, (items) => {
 		if (chrome.runtime.lastError) return;
 		for (const [key, value] of Object.entries(items)) {
-			if (key.startsWith(TITLE_KEY_PREFIX) && typeof value === "string" && value) {
+			if (
+				key.startsWith(TITLE_KEY_PREFIX) &&
+				typeof value === "string" &&
+				value
+			) {
 				const sid = key.slice(TITLE_KEY_PREFIX.length);
 				titleCache.set(sid, value);
 			}

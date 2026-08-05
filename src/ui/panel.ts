@@ -10,7 +10,6 @@ import { scrollToRound, getMessagesForRound } from "../conversationStore";
 import { panel } from "../state";
 import { UI_STYLES, ICON_X_SVG } from "./styles";
 
-
 // ─── Scroll highlight ──────────────────────────────────────────────────────────────────────
 
 export function refreshCurrentHighlight(list: HTMLElement | null) {
@@ -345,7 +344,6 @@ export function ensurePanelSkeleton(
 		headerActions.appendChild(scanBtn);
 	}
 
-
 	header.appendChild(headerActions);
 
 	// Close button
@@ -392,4 +390,3 @@ export function ensureStyles(shadowRoot: ShadowRoot) {
 	s.textContent = UI_STYLES;
 	shadowRoot.appendChild(s);
 }
-
