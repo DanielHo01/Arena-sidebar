@@ -8,9 +8,8 @@ import type { SidebarRound } from "../types";
 import { hiddenRoundIds } from "../rounds";
 import { scrollToRound, getMessagesForRound } from "../conversationStore";
 import { panel } from "../state";
-import { conversationStore } from "../conversationStore";
 import { UI_STYLES, ICON_X_SVG } from "./styles";
-import { exportConversation, summarizeRounds } from "./modals";
+
 
 // ─── Scroll highlight ──────────────────────────────────────────────────────────────────────
 
@@ -346,19 +345,6 @@ export function ensurePanelSkeleton(
 		headerActions.appendChild(scanBtn);
 	}
 
-	// Export button
-	const exportBtn = makeHeaderBtn("📤", "Export current conversation", () => {
-		exportConversation(conversationStore.messages, shadowRoot);
-	});
-	headerActions.appendChild(exportBtn);
-
-	// Summarize button — hidden on /c/ (no full history available there)
-	if (!isCharacterChat) {
-		const sumBtn = makeHeaderBtn("✨", "AI summarize rounds", () => {
-			summarizeRounds(conversationStore.messages, shadowRoot);
-		});
-		headerActions.appendChild(sumBtn);
-	}
 
 	header.appendChild(headerActions);
 
