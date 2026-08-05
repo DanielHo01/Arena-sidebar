@@ -137,13 +137,31 @@ function resetSessionState(): void {
 	lastRouteKey = getRouteKey();
 }
 
-async function rebuildForCurrentRoute(): Promise<void> {
-	// Sprint 5/7: restore from storage before rebuilding from DOM
+// ─── Hydration: load persisted data immediately, render without waiting for DOM ───────────────
+// Called once at bootstrap to restore the session from cache before any DOM extraction.
+// This ensures the panel shows content immediately even before Arena has rendered messages.
+
+let hydrationDone = false;
+
+async function hydrateFromStorage(): Promise<void> {
+	if (hydrationDone) return;
+	hydrationDone = true;
 	const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
-	if (sessionId) {
-		conversationStore.sessionId = sessionId;
-		await conversationStore.loadFromStorage(sessionId);
-	}
+	if (!sessionId) return;
+	conversationStore.sessionId = sessionId;
+	await conversationStore.loadFromStorage(sessionId);
+	console.log(
+		"[AI Sidebar] hydration: restored",
+		conversationStore.messages.length,
+		"messages from storage",
+	);
+}
+
+// ─── DOM extraction (no unconditional storage overwrite) ───────────────────────────────────
+// Called by the observer after preScroll completes. Passes persist=false so it never
+// overwrites storage with a potentially empty DOM snapshot during the preScroll window.
+
+function rebuildForCurrentRoute(): void {
 	const bootstrapMsgs = extractBootstrapMessages();
 	const domMsgs = extractMessages();
 	refreshStore({
@@ -151,12 +169,12 @@ async function rebuildForCurrentRoute(): Promise<void> {
 		dom: domMsgs,
 		bindAnchors: true,
 	});
-	// Sprint 5: persist after each rebuild
-	conversationStore.saveToStorage();
+	// Only save when DOM contributed new messages — never overwrite storage with
+	// a blank DOM snapshot during the preScroll window or early hydration.
+	if (domMsgs.length > 0) {
+		conversationStore.saveToStorage();
+	}
 }
-
-// ─── MutationObserver ─────────────────────────────────────────────────────────────────────
-
 let observer: MutationObserver | null = null;
 
 function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
@@ -550,6 +568,11 @@ try {
 		bootstrapDone = true;
 		lastRouteKey = getRouteKey(); // init route key on first load
 		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
+		// Hydrate from storage immediately so the panel renders with cached data
+		// without waiting for DOM extraction or preScroll to complete.
+		void hydrateFromStorage().then(() => {
+			if (shadowRoot) refreshUI();
+		});
 		// Restore custom history titles from storage onto Arena sidebar links
 		void setupHistoryTitleEditing();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
@@ -557,16 +580,10 @@ try {
 		if (shadowRoot) {
 			setupObserver(shadowRoot, refreshUI);
 			setupPeriodicPush(refreshUI);
-			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
+			// Pre-scroll to trigger Arena to render more messages.
+			// After preScroll: observer will naturally fire as Arena injects messages
+			// into the DOM, debouncing into rebuildForCurrentRoute + refreshUI.
 			startPreScroll(() => {
-				// After pre-scroll: extract + rebuild for current route.
-				rebuildForCurrentRoute();
-				console.log(
-					"[AI Sidebar] store: total messages=" +
-						conversationStore.messages.length +
-						" rounds=" +
-						conversationStore.rounds.length,
-				);
 				refreshUI();
 			});
 		}

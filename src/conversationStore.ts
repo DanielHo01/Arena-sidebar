@@ -419,8 +419,10 @@ export function refreshStore(opts: {
 	bootstrap?: SidebarMessage[];
 	dom?: SidebarMessage[];
 	bindAnchors?: boolean;
+	/** Write the merged result back to chrome.storage. Default true. */
+	persist?: boolean;
 }) {
-	const { bootstrap = [], dom = [], bindAnchors = true } = opts;
+	const { bootstrap = [], dom = [], bindAnchors = true, persist = true } = opts;
 	const hadDom = dom.length > 0;
 
 	// P3 fix: skip if nothing new to add (avoids O(n) rebuildRounds on every call).
@@ -460,6 +462,11 @@ export function refreshStore(opts: {
 	// Set lastOrigin to the highest-priority origin that contributed.
 	if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
 	else if (dom.length > 0) conversationStore.lastOrigin = "dom";
+
+	// Sprint C: only write to storage when caller explicitly asks.
+	// Prevents a preScroll callback with empty DOM extraction from overwriting
+	// a full storage restore with empty data.
+	if (persist) conversationStore.saveToStorage();
 }
 
 // ─── Scroll to round: navigate to the round's DOM anchor ─────────────────────────

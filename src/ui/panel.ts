@@ -135,9 +135,7 @@ function createRoundEl(round: SidebarRound, idx: number): HTMLElement {
 	const main = document.createElement("span");
 	main.className = "main-text";
 	const mainText =
-		round.userPreview?.trim() ||
-		round.title?.trim() ||
-		`Round ${idx + 1}`;
+		round.userPreview?.trim() || round.title?.trim() || `Round ${idx + 1}`;
 	main.textContent = mainText;
 	main.title = mainText;
 	item.appendChild(main);
@@ -176,9 +174,7 @@ function updateRoundEl(el: HTMLElement, round: SidebarRound, idx: number) {
 	const mainEl = el.querySelector(".main-text") as HTMLElement | null;
 	if (mainEl) {
 		const mainText =
-			round.userPreview?.trim() ||
-			round.title?.trim() ||
-			`Round ${idx + 1}`;
+			round.userPreview?.trim() || round.title?.trim() || `Round ${idx + 1}`;
 		mainEl.textContent = mainText;
 		mainEl.title = mainText;
 	}
