@@ -14,7 +14,7 @@
 export type ChatRole = "user" | "assistant" | "system";
 
 /** Where a message originated in the extension pipeline. */
-export type MessageOrigin = "bootstrap" | "capture" | "dom";
+export type MessageOrigin = "bootstrap" | "dom";
 
 // ─── Unified message type ──────────────────────────────────────────────────────────
 // Used everywhere a message appears: extract → store → panel.
@@ -33,10 +33,7 @@ export interface SidebarMessage {
 	roundIndex?: number;
 	/** Where this message was first observed */
 	origin?: MessageOrigin;
-	/** Timestamp from capture source */
-	capturedAt?: number;
-	/** Session id from capture source */
-	sessionId?: string;
+
 }
 
 // ─── Unified round type ─────────────────────────────────────────────────────────────

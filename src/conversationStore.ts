@@ -233,12 +233,6 @@ function upsertMessage(msg: SidebarMessage): boolean {
 	if (existing) {
 		// Merge: preserve existing domId even if new source doesn't have it.
 		if (!existing.domId && msg.domId) existing.domId = msg.domId;
-		// Prefer capture origin over dom origin.
-		if (msg.origin === "capture" && existing.origin !== "capture") {
-			existing.content = msg.content;
-			existing.capturedAt = msg.capturedAt;
-			existing.origin = "capture";
-		}
 		return false; // not new
 	}
 
@@ -423,24 +417,20 @@ export function rebuildRounds() {
 
 export function refreshStore(opts: {
 	bootstrap?: SidebarMessage[];
-	capture?: SidebarMessage[];
 	dom?: SidebarMessage[];
 	bindAnchors?: boolean;
 }) {
-	const { bootstrap = [], capture = [], dom = [], bindAnchors = true } = opts;
+	const { bootstrap = [], dom = [], bindAnchors = true } = opts;
 	const hadDom = dom.length > 0;
 
 	// P3 fix: skip if nothing new to add (avoids O(n) rebuildRounds on every call).
-	if (bootstrap.length === 0 && capture.length === 0 && dom.length === 0) {
+	if (bootstrap.length === 0 && dom.length === 0) {
 		return;
 	}
 
-	// Priority merge: bootstrap → capture → dom.
+	// Priority merge: bootstrap → dom.
 	for (const m of bootstrap) {
 		upsertMessage({ ...m, origin: "bootstrap" });
-	}
-	for (const m of capture) {
-		upsertMessage({ ...m, origin: "capture" });
 	}
 	for (const m of dom) {
 		const fp = fingerprint(m.content);
@@ -463,13 +453,12 @@ export function refreshStore(opts: {
 	if (bindAnchors) bindDomAnchors();
 
 	// Compute rounds only when DOM content changed (P3).
-	if (bootstrap.length > 0 || capture.length > 0 || hadDom) {
+	if (bootstrap.length > 0 || hadDom) {
 		rebuildRounds();
 	}
 
 	// Set lastOrigin to the highest-priority origin that contributed.
-	if (capture.length > 0) conversationStore.lastOrigin = "capture";
-	else if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
+	if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
 	else if (dom.length > 0) conversationStore.lastOrigin = "dom";
 }
 

@@ -33,11 +33,10 @@ export const fab = {
 	prevRoundIds: [] as string[],
 };
 
-// ─── Timer refs (P1 #3 — replaces unsafe window.__aiSidebar* properties) ──────────
+// ─── Timer refs ────────────────────────────────────────────────────────────────────
 
 export const timers = {
 	debounce: null as ReturnType<typeof setTimeout> | null,
-	pollInterval: null as ReturnType<typeof setInterval> | null,
 	refreshInterval: null as ReturnType<typeof setInterval> | null,
 };
 
