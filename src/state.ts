@@ -6,7 +6,7 @@
 export const CONFIG = {
 	EXTRACT_COOLDOWN_MS: 500,
 	DEBOUNCE_MS: 800,
-	REFRESH_INTERVAL_MS: 30000,
+	REFRESH_INTERVAL_MS: 120_000, // P6: demoted from 30s to 2min — observer now handles active updates; periodic is just a slow safety net
 } as const;
 
 // ─── DOM element registry (written by extract.ts, read by rounds.ts, conversationStore.ts) ──
