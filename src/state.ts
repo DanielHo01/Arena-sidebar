@@ -6,7 +6,6 @@
 export const CONFIG = {
 	EXTRACT_COOLDOWN_MS: 500,
 	DEBOUNCE_MS: 800,
-	CAPTURE_INTERVAL_MS: 2000,
 	REFRESH_INTERVAL_MS: 30000,
 } as const;
 
@@ -32,12 +31,6 @@ export const panel = {
 export const fab = {
 	position: null as { x: number; y: number } | null,
 	prevRoundIds: [] as string[],
-};
-
-// ─── Capture state ───────────────────────────────────────────────────────────────
-
-export const capture = {
-	isSummarizing: false,
 };
 
 // ─── Timer refs (P1 #3 — replaces unsafe window.__aiSidebar* properties) ──────────

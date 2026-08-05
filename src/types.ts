@@ -57,40 +57,4 @@ export interface SidebarRound {
 	assistantCount?: number;
 }
 
-// ─── Capture types (unchanged — written by inject-hook.js in main world) ───────────
-
-export interface ChatRequest {
-	kind: "chat-request";
-	url: string;
-	sessionId: string;
-	mode: string;
-	modality: string;
-	modelAId: string;
-	modelBId: string;
-	userMessageId: string;
-	content: string;
-	attachmentCount: number;
-	ts: number;
-}
-
-export interface ChatResponse {
-	kind: "chat-response";
-	aText: string;
-	aReasoning: string;
-	aFinished: boolean;
-	aError: string;
-	bText: string;
-	bReasoning: string;
-	bFinished: boolean;
-	bError: string;
-	ts: number;
-}
-
-export interface CapturedRound {
-	sessionId: string;
-	request: ChatRequest;
-	response: ChatResponse;
-	completed: boolean;
-}
-
 

@@ -9,7 +9,6 @@
 // Module boundaries:
 //   extract.ts          — DOM → SidebarMessage[]
 //   rounds.ts           — messages → SidebarRound[]
-//   capture.ts          — API/WS/chat polling
 //   conversationStore.ts — merge + persist + bind
 //   ui/panel.ts         — panel skeleton, round items, reconciliation
 //   ui/fab.ts          — FAB + drag
@@ -28,7 +27,7 @@ import {
 	extractBootstrapMessages,
 } from "./conversationStore";
 import { panel, fab, timers, cachedElements } from "./state";
-import { pollCaptures, setupRscCapture } from "./capture";
+
 
 import { buildFab } from "./ui/fab";
 import {
@@ -205,13 +204,8 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 // ─── Periodic timers ───────────────────────────────────────────────────────────────────────
 
 function setupPeriodicPush(refreshUI: () => void) {
-	if (timers.pollInterval !== null || timers.refreshInterval !== null) return;
-	timers.pollInterval = setInterval(() => {
-		if (!panel.isDragging) {
-			pollCaptures();
-		}
-	}, 2000);
-	timers.refreshInterval = setInterval(() => {
+if (timers.refreshInterval !== null) return;
+timers.refreshInterval = setInterval(() => {
 		if (!panel.isDragging) {
 			const prevCount = conversationStore.messages.length;
 			const domMsgs = extractMessages();
@@ -384,7 +378,7 @@ function countRenderedMessages(): number {
 function refreshUI() {
 	if (!shadowRoot) return;
 
-	// Read from canonical store (updated by bootstrap, capture, or periodic DOM re-scan).
+	// Read from canonical store (updated by bootstrap or DOM re-scan).
 	const storeMessages = conversationStore.messages;
 	const storeRounds = conversationStore.rounds;
 	const newIds = storeRounds.map((r) => r.id);
@@ -564,7 +558,6 @@ try {
 		if (shadowRoot) {
 			setupObserver(shadowRoot, refreshUI);
 			setupPeriodicPush(refreshUI);
-			setupRscCapture(); // Sprint 2.5: listen for Arena's RSC stream responses
 			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
 			startPreScroll(() => {
 				// After pre-scroll: extract + rebuild for current route.

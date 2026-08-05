@@ -349,13 +349,6 @@ function detectRole(content: string): "user" | "assistant" {
 	return "assistant";
 }
 
-// ─── Capture: add captured messages to store ───────────────────────────────────────
-
-export function addCapturedMessage(msg: SidebarMessage): boolean {
-	msg.origin = "capture";
-	return upsertMessage(msg);
-}
-
 // ─── DOM: add extracted messages to store (no anchor binding here) ──────────────────
 
 export function addDomMessages(

@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import {
 	conversationStore,
 	refreshStore,
-	addCapturedMessage,
 	bindDomAnchors,
 	getMessagesForRound,
 } from "../src/conversationStore";
@@ -40,22 +39,6 @@ run("refreshStore with empty opts -> no-op", () => {
 	refreshStore({});
 	assert.equal(conversationStore.messages.length, 0);
 	assert.equal(conversationStore.rounds.length, 0);
-});
-
-run("capture origin upgrades a prior dom message of same content", () => {
-	conversationStore.reset();
-	refreshStore({ dom: [{ id: "m1", role: "user", content: "hello world" }] });
-	const added = addCapturedMessage({
-		id: "cap",
-		role: "user",
-		content: "hello world",
-		capturedAt: 123,
-		sessionId: "s",
-	});
-	assert.equal(added, false); // not new — merged into existing
-	assert.equal(conversationStore.messages.length, 1);
-	assert.equal(conversationStore.messages[0].origin, "capture");
-	assert.equal(conversationStore.messages[0].capturedAt, 123);
 });
 
 run("system role normalized to assistant on dom insert", () => {
@@ -132,4 +115,4 @@ if (failures.length > 0) {
 	failures.forEach((f) => console.error("  - " + f));
 	process.exit(1);
 }
-console.log("test-src-store: PASS (" + 8 + " assertions)");
+console.log("test-src-store: PASS (" + 7 + " assertions)");
