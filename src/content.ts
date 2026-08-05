@@ -40,6 +40,7 @@ import {
 import {
 	conversationStore,
 	refreshStore,
+	extractBootstrapMessages,
 } from "./conversationStore";
 import { panel, fab, timers, cachedElements } from "./state";
 
@@ -162,11 +163,34 @@ function resetSessionState(): void {
 
 let hydrationDone = false;
 
+// ─── DOM extraction (no unconditional storage overwrite) ───────────────────────────────────
+// Extracts messages from the current DOM and merges them into the store.
+// Storage loading is handled separately by hydrateFromStorage().
+// Only saves to storage when DOM actually contributed new messages.
+
+function rebuildForCurrentRoute(): void {
+	const _t = t0('rebuildForCurrentRoute');
+	const bootstrapMsgs = extractBootstrapMessages();
+	const domMsgs = extractMessages();
+	refreshStore({
+		bootstrap: bootstrapMsgs,
+		dom: domMsgs,
+		bindAnchors: true,
+	});
+	t1('rebuildForCurrentRoute', _t,
+		`bootstrap=${bootstrapMsgs.length} dom=${domMsgs.length} total=${conversationStore.messages.length}`);
+	// Only save when DOM contributed new messages — never overwrite storage with
+	// a blank DOM snapshot during the preScroll window or early hydration.
+	if (domMsgs.length > 0) {
+		conversationStore.saveToStorage();
+	}
+}
+
 async function hydrateFromStorage(): Promise<void> {
 	const _t = t0('hydrateFromStorage');
 	if (hydrationDone) { t1('hydrateFromStorage SKIP (done)', _t); return; }
 	hydrationDone = true;
-	const sessionId = location.pathname.match(/^\/c\/([^\/?#]+)/)?.[1] ?? "";
+	const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
 	if (!sessionId) { t1('hydrateFromStorage SKIP (no session)', _t); return; }
 	conversationStore.sessionId = sessionId;
 	await conversationStore.loadFromStorage(sessionId);
@@ -319,9 +343,11 @@ function startPreScroll(onDone: () => void) {
 					startPreScroll(onDone);
 				} else {
 					console.log(
-						"[Perf] startPreScroll: gave up, no container",
+						"[Perf] startPreScroll: gave up, no container — extracting from DOM",
 					);
 					preScrollDone = true;
+					// Extract whatever messages Arena has rendered so far (even without preScroll).
+					rebuildForCurrentRoute();
 					onDone();
 				}
 			}
@@ -332,7 +358,8 @@ function startPreScroll(onDone: () => void) {
 	// need the full list extracted. If the container isn't virtualized (fits on
 	// screen), skip entirely — no scroll, no extract, no signature burn.
 	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[Perf] startPreScroll: skipped, container not virtualized");
+		console.log("[Perf] startPreScroll: skipped, container not virtualized — calling rebuild anyway");
+					rebuildForCurrentRoute();
 		preScrollDone = true;
 		onDone();
 		return;
