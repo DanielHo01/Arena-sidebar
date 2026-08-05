@@ -24,7 +24,6 @@ import {
 import {
 	conversationStore,
 	refreshStore,
-	extractBootstrapMessages,
 } from "./conversationStore";
 import { panel, fab, timers, cachedElements } from "./state";
 
@@ -135,6 +134,10 @@ function resetSessionState(): void {
 	panel.highlightInitialized = false;
 	panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open
 	lastRouteKey = getRouteKey();
+	// C5: allow hydrateFromStorage to run on new route.
+	// Without this, hydration is skipped after a route change and the panel shows
+	// 0 messages until the observer fires on a second navigation.
+	hydrationDone = false;
 }
 
 // ─── Hydration: load persisted data immediately, render without waiting for DOM ───────────────
@@ -161,20 +164,6 @@ async function hydrateFromStorage(): Promise<void> {
 // Called by the observer after preScroll completes. Passes persist=false so it never
 // overwrites storage with a potentially empty DOM snapshot during the preScroll window.
 
-function rebuildForCurrentRoute(): void {
-	const bootstrapMsgs = extractBootstrapMessages();
-	const domMsgs = extractMessages();
-	refreshStore({
-		bootstrap: bootstrapMsgs,
-		dom: domMsgs,
-		bindAnchors: true,
-	});
-	// Only save when DOM contributed new messages — never overwrite storage with
-	// a blank DOM snapshot during the preScroll window or early hydration.
-	if (domMsgs.length > 0) {
-		conversationStore.saveToStorage();
-	}
-}
 let observer: MutationObserver | null = null;
 
 function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
@@ -191,7 +180,9 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 				const nextKey = getRouteKey();
 				if (nextKey !== lastRouteKey) {
 					resetSessionState();
-					rebuildForCurrentRoute();
+					// C5: re-hydrate from storage on route change so the panel shows cached
+					// content immediately, even before Arena has rendered the new chat DOM.
+					void hydrateFromStorage().then(() => refreshUI());
 					isFirstRender = true; // route change → next render should be immediate
 				}
 				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
@@ -582,7 +573,7 @@ try {
 			setupPeriodicPush(refreshUI);
 			// Pre-scroll to trigger Arena to render more messages.
 			// After preScroll: observer will naturally fire as Arena injects messages
-			// into the DOM, debouncing into rebuildForCurrentRoute + refreshUI.
+			// into the DOM, debouncing into refreshUI.
 			startPreScroll(() => {
 				refreshUI();
 			});
