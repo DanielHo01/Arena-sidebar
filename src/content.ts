@@ -136,7 +136,6 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 // ─── Route-change detection for SPA ────────────────────────────────────────────────
 
 let lastRouteKey = "";
-let isFirstRender = true; // Sprint 3.1: skip debounce on first render
 
 function getRouteKey(): string {
 	const m = location.pathname.match(/^\/c\/([^/?#]+)/);
@@ -176,11 +175,50 @@ async function rebuildForCurrentRoute(): Promise<void> {
 	conversationStore.saveToStorage();
 }
 
+// ─── Hydration: load persisted data + render ───────────────────────────────────────────
+// Split from bootstrap so that data restoration and rendering can run after
+// initFolders/migrateHistoryTitles completes, independently of bootstrapDone.
+// Guard with hydrationInFlight so concurrent calls (bootstrap + route change) are de-duped.
+
+let hydrationInFlight: Promise<void> | null = null;
+
+async function hydrateAndRenderCurrentRoute(): Promise<void> {
+	if (hydrationInFlight) {
+		try { await hydrationInFlight; } catch { /* ignore */ }
+		return;
+	}
+
+	hydrationInFlight = (async () => {
+		const sessionId =
+			location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
+		// Load persisted messages from storage (may be 0 if first visit)
+		if (sessionId) {
+			await conversationStore.loadFromStorage(sessionId);
+		}
+		// Rebuild session state from DOM + bootstrap (merge with persisted data)
+		await rebuildForCurrentRoute();
+		// Ensure 🗂 entry is injected (retry handles delayed Arena DOM)
+		ensureArenaFolderEntryWithRetry(() =>
+			toggleArenaSessionLibrarySection(),
+		);
+		// Restore custom titles from foldersState index onto Arena DOM
+		setupHistoryTitleEditing();
+		// Render with restored/hydrated data
+		refreshUI();
+	})();
+
+	try {
+		await hydrationInFlight;
+	} finally {
+		hydrationInFlight = null;
+	}
+}
+
 // ─── MutationObserver ─────────────────────────────────────────────────────────────────────
 
 let observer: MutationObserver | null = null;
 
-function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
+function setupObserver(_shadowRoot: ShadowRoot, _refreshUI: () => void) {
 	if (observer) observer.disconnect();
 	observer = new MutationObserver(() => {
 		if (panel.isDragging) return;
@@ -194,23 +232,14 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 				const nextKey = getRouteKey();
 				if (nextKey !== lastRouteKey) {
 					resetSessionState();
-					rebuildForCurrentRoute();
-					isFirstRender = true; // route change → next render should be immediate
-					// Phase 10A: re-inject Arena sidebar entries on route change
-					ensureArenaFolderEntryWithRetry(() => toggleArenaSessionLibrarySection());
-					setupHistoryContextMenu();
+					// Hydrate: load persisted + rebuild + arena entry + titles + render
+					void hydrateAndRenderCurrentRoute();
 				}
-				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
-				if (isFirstRender) {
-					isFirstRender = false;
-					refreshUI(); // instant on first render — no debounce wait
-				} else {
-					if (timers.debounce !== null) clearTimeout(timers.debounce);
-					timers.debounce = setTimeout(() => {
-						isFirstRender = false;
-						refreshUI();
-					}, 800);
-				}
+				// Re-bind history title editing on DOM changes (de-bounced)
+				if (timers.debounce !== null) clearTimeout(timers.debounce);
+				timers.debounce = setTimeout(() => {
+					setupHistoryTitleEditing();
+				}, 800);
 			}
 		}, 800);
 	});
@@ -490,7 +519,7 @@ function refreshUI() {
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
 	}
-	}
+}
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
 function ensureUI() {
@@ -583,30 +612,20 @@ try {
 			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
 			.catch(() => {}); // fire-and-forget
 		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
-		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
-		queueMicrotask(() =>
-			ensureArenaFolderEntryWithRetry(() => toggleArenaSessionLibrarySection()),
-		);
 		// Phase 10A: wire right-click context menu to Arena history links
 		setupHistoryContextMenu();
-		// Restore custom history titles immediately (not only after chat-area mutations)
-		setupHistoryTitleEditing();
+		// Hydrate: load persisted messages + rebuild + arena entry + restore titles + render
+		// Runs after initFolders completes so that sessionMeta is available for titles.
+		void hydrateAndRenderCurrentRoute();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
 		if (shadowRoot) {
 			setupObserver(shadowRoot, refreshUI);
 			setupPeriodicPush(refreshUI);
 			setupRscCapture(); // Sprint 2.5: listen for Arena's RSC stream responses
-			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
+			// Pre-scroll to load all messages before first extract (DOM-based, not storage).
 			startPreScroll(() => {
-				// After pre-scroll: extract + rebuild for current route.
-				rebuildForCurrentRoute();
-				console.log(
-					"[AI Sidebar] store: total messages=" +
-						conversationStore.messages.length +
-						" rounds=" +
-						conversationStore.rounds.length,
-				);
+				rebuildForCurrentRoute(); // extract from DOM + merge with hydrated storage data
 				refreshUI();
 			});
 		}
