@@ -132,7 +132,7 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 // ─── Route-change detection for SPA ────────────────────────────────────────────────
 
 let lastRouteKey = "";
-	
+
 function getRouteKey(): string {
 	const m = location.pathname.match(/^\/c\/([^/?#]+)/);
 	if (m) return "c:" + m[1];
@@ -168,7 +168,8 @@ let hydrationDone = false;
 // Storage loading is handled separately by hydrateFromStorage().
 // Only saves to storage when DOM actually contributed new messages.
 
-function rebuildForCurrentRoute(): void {
+// Returns the extracted message counts so runRefresh can decide whether to re-render.
+function rebuildForCurrentRoute(): { bootstrap: number; dom: number } {
 	const _t = t0("rebuildForCurrentRoute");
 	const bootstrapMsgs = extractBootstrapMessages();
 	const domMsgs = extractMessages();
@@ -187,6 +188,7 @@ function rebuildForCurrentRoute(): void {
 	if (domMsgs.length > 0) {
 		conversationStore.saveToStorage();
 	}
+	return { bootstrap: bootstrapMsgs.length, dom: domMsgs.length };
 }
 
 async function hydrateFromStorage(): Promise<void> {
@@ -276,10 +278,16 @@ function runRefresh(reason: string): void {
 	if (panel.isDragging || preScrollActive) return;
 
 	refreshRunning = true;
+	let newContent = false;
 	try {
 		setupHistoryTitleEditing();
-		rebuildForCurrentRoute();
-		refreshUI();
+		const counts = rebuildForCurrentRoute();
+		// Only re-render the panel when the store actually gained new messages.
+		// Silent rebuilds (bootstrap=0 dom=0) happen when Arena mutates non-message DOM
+		// (e.g. typing indicators, focus rings) — skipping refreshUI eliminates the
+		// reconcile noise without losing any real update.
+		newContent = counts.bootstrap > 0 || counts.dom > 0;
+		if (newContent) refreshUI();
 	} finally {
 		refreshRunning = false;
 	}
