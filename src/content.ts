@@ -28,7 +28,6 @@ import {
 } from "./conversationStore";
 import { panel, fab, timers, cachedElements } from "./state";
 
-
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,
@@ -204,8 +203,8 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 // ─── Periodic timers ───────────────────────────────────────────────────────────────────────
 
 function setupPeriodicPush(refreshUI: () => void) {
-if (timers.refreshInterval !== null) return;
-timers.refreshInterval = setInterval(() => {
+	if (timers.refreshInterval !== null) return;
+	timers.refreshInterval = setInterval(() => {
 		if (!panel.isDragging) {
 			const prevCount = conversationStore.messages.length;
 			const domMsgs = extractMessages();
@@ -462,7 +461,7 @@ function refreshUI() {
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
 	}
-	}
+}
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
 function ensureUI() {

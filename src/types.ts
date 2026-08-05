@@ -33,7 +33,6 @@ export interface SidebarMessage {
 	roundIndex?: number;
 	/** Where this message was first observed */
 	origin?: MessageOrigin;
-
 }
 
 // ─── Unified round type ─────────────────────────────────────────────────────────────
@@ -53,5 +52,3 @@ export interface SidebarRound {
 	assistantPreview?: string;
 	assistantCount?: number;
 }
-
-

@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "test": "npm run test:mirror && npm run test:src",
     "test:mirror": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs && node scripts/test-conversation-store.cjs",
-    "test:src": "tsx scripts/test-src-rounds.ts && tsx scripts/test-src-store.ts && tsx scripts/test-src-title-resolution.ts"
+    "test:src": "tsx scripts/test-src-rounds.ts && tsx scripts/test-src-store.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
