@@ -7,13 +7,20 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.2.1
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
 
       - name: Setup Node.js
         uses: actions/setup-node@0a44ba7841725637e19b5681df855fcbf5b6a85a
@@ -32,3 +39,10 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Debug versions
+        if: failure()
+        run: |
+          node -v
+          npm -v
+          npx tsc -v
