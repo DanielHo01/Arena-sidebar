@@ -387,12 +387,35 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 
 **Phase 1 期间 CI 抓到的自身错误**（记录以免重犯）：新写的 `context-menu.test.ts` 有 3 个类型错误，Vitest 只转译不检查类型所以放过了，`tsc -b` 拦住。→ 这正是 typecheck 必须独立成一步的价值，第一天就兑现。
 
-### Phase 2 — 抽 `platform/` 层
+### Phase 2 — 抽 `platform/` 层 ✅ 已完成
 
-- [ ] `platform/storage.ts`：14 处手写样板 → 1 个 adapter，支持注入 fake。**干掉 `contextValid` 全局失效开关**（一次 `lastError` 永久禁用整个 tab 的存储，`historyTitles` 甚至故意绕过它）→ 改为 per-call 错误处理
-- [ ] `platform/route.ts`：9 处正则 → 1 处
-- [ ] `platform/arenaDom.ts`：3 处滚动容器 selector、历史链接 selector、quick-nav 路径
-- **验收**：新增 platform 层真实源码测试（注入 fake chrome / jsdom）；`grep -c 'chrome.storage.local' src/` 从 14 降到 ≤ 2（仅 adapter 内）
+- [x] `platform/storage.ts`：14 处手写样板 → 1 个 adapter，支持注入 fake。**干掉 `contextValid` 全局失效开关** → 改为 per-call 错误处理
+- [x] `platform/route.ts`：9 处正则 → 1 处（实际在 Phase 1 提前完成，见下）
+- [x] `platform/arenaDom.ts`：历史链接 selector、滚动容器 selector、quick-nav 路径
+- **验收**：platform 层真实源码测试 32 个（`storage.test.ts` 17 + `arenaDom.test.ts` 15）；`chrome.storage.local` 代码站点 14 → **1**（仅 adapter 内）
+
+**实测验收数据**
+
+| 指标 | 重构前 | 重构后 |
+| --- | --- | --- |
+| `chrome.storage.local` 代码站点 | 14（5 个文件） | **1**（仅 `platform/storage.ts:41`） |
+| `contextValid` / `invalidateContext` | 6 处引用 + 2 处定义 | **0**（已从 `state.ts` 删除） |
+| `typeof chrome` 守卫 | 8 | **1**（adapter 内） |
+| 裸 `a[href*="/c/"]` 代码站点 | 3 | **0**（`HISTORY_LINK_SELECTOR`） |
+| Vitest 测试 | 85 | **117** |
+| 覆盖率 statements | 23.10% | **26.87%**（`arenaDom` 100%、`storage` 84.9%） |
+| Bundle | 54.16 kB | **53.99 kB** / gzip 16.80 |
+
+**`contextValid` 为什么必须死**：它是一个单向开关——任意一次 `lastError` 就把整个 tab 的存储永久禁用，且无法恢复。`historyTitles.ts` 甚至专门写了注释说明它**故意绕过**这个标志，因为标志"太有破坏性"。这是"用 workaround 绕 workaround"。现在每次调用独立处理错误：失败只影响该次调用（`storageGet` → `undefined`，`storageSet`/`storageRemove` → `false`），且 adapter **永不 reject**，所以存储故障不可能击穿 content script。回归测试 `a failed get does not disable the next get` 直接钉住这个性质。
+
+**两处计划偏差**
+
+1. **滚动容器 selector 实际只剩 1 处**，不是计划里写的 3 处。原计划记的是 `content.ts` L218/L259/L293 三个调用点；Phase 1 为修 preScroll bug 把 `findScrollContainer` 整体抽进 `features/prescroll.ts` 时，3 个调用点已自然收敛为 1 处。本阶段只需把那个 selector 常量搬进 `arenaDom.ts`。
+2. **`platform/route.ts` 在 Phase 1 已完成**（commit `f941975`）。原因是修 route bug 必须先有这个模块，否则 9 个调用点里改一个就漏八个。
+
+**顺带修正的可测性缺陷**：`findArenaQuickNavContainer()` 那条 `children[0] → [1] → [0] → [2]` 路径原先埋在 760 行的 `folders.ts` 里，无法测试。现在搬进 `arenaDom.ts` 并有 7 个测试覆盖各级缺失场景——Arena 改版时这些测试会**指名道姓地红**，而不是扩展静默渲染不出东西。
+
+**本轮记录的自身错误**（避免重犯）：上一轮报告"棘轮阈值已抬到 23/24/27/23"是**错的**。python 替换用了 2 个 tab 缩进，`vitest.config.ts` 实际是 3 个 tab，没匹配上，而 `print("ok")` 无条件执行掩盖了失败。文件里一直是 12/12/14/12。现已按实测下限改为 **26/28/32/26**，并用"临时设 99 → exit 1"验证闸门确实生效。教训：**替换后必须回读确认，不能只看脚本是否报错。**
 
 ### Phase 3 — 抽 `core/` 层（纯函数化）
 

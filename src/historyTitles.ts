@@ -1,5 +1,5 @@
 // History title editing — double-click on /c/ sidebar links to rename them.
-// The custom title is persisted in chrome.storage.local.
+// The custom title is persisted via platform/storage.ts.
 //
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
@@ -7,6 +7,7 @@
 import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
+import { queryHistoryLinks } from "./platform/arenaDom";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
 // DEPRECATED: historyTitle_ keys are no longer the canonical title store.
@@ -26,7 +27,7 @@ function cacheTitle(sid: string, title: string): void {
 }
 
 // Load every historyTitle_* key into the cache in ONE storage call. After this the
-// restore path is pure in-memory — no per-link chrome.storage.local.get on every
+// restore path is pure in-memory — no per-link storage read on every
 // DOM change (Arena's sidebar can hold dozens of /c/ links, and the observer fires
 // on every mutation, so per-link get previously caused a storage-call storm).
 function loadTitleCache(): void {
@@ -82,8 +83,8 @@ function applyCustomTitle(anchor: Element, customTitle: string) {
 // ─── Restore ─────────────────────────────────────────────────────────────────────────
 // Idempotent: applies custom title only when the visible text differs, so it can be
 // re-run on every DOM change (and after React resets textContent) without side effects.
-// Deliberately does NOT gate on contextValid: a stale flag from one unrelated
-// lastError would otherwise silently kill every restore (and every save below).
+// No longer needs a contextValid escape hatch: platform/storage.ts handles
+// errors per call, so a single failure cannot disable every restore and save.
 
 function restoreTitle(item: HTMLElement, sid: string): void {
 	const cached = titleCache.get(sid);
@@ -105,11 +106,10 @@ function restoreTitle(item: HTMLElement, sid: string): void {
 }
 
 function restoreAllTitles(): void {
-	const items = document.querySelectorAll('a[href*="/c/"]');
-	items.forEach((item) => {
+	queryHistoryLinks().forEach((item) => {
 		const href = item.getAttribute("href") || "";
 		const sid = sessionIdFromHref(href);
-		if (sid) restoreTitle(item as HTMLElement, sid);
+		if (sid) restoreTitle(item, sid);
 	});
 }
 
@@ -118,10 +118,8 @@ function restoreAllTitles(): void {
 export function setupHistoryTitleEditing() {
 	loadTitleCache();
 	restoreAllTitles();
-	const items = document.querySelectorAll('a[href*="/c/"]');
-	items.forEach((item) => {
-		const itemEl = item as HTMLElement;
-		const href = item.getAttribute("href") || "";
+	queryHistoryLinks().forEach((itemEl) => {
+		const href = itemEl.getAttribute("href") || "";
 		const sid = sessionIdFromHref(href);
 		if (!sid) return;
 		if (itemEl.dataset.aiSidebarEditable === "1") return;

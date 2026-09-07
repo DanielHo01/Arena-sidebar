@@ -52,6 +52,7 @@ import {
 } from "./ui/panel";
 import { setupHistoryTitleEditing } from "./historyTitles";
 import { getSessionId, isSessionRoute, routeKey } from "./platform/route";
+import { storageGet } from "./platform/storage";
 import {
 	isPreScrollActive,
 	resetPreScroll,
@@ -163,7 +164,7 @@ async function rebuildForCurrentRoute(): Promise<void> {
 		bindAnchors: true,
 	});
 	// Sprint 5: persist after each rebuild
-	conversationStore.saveToStorage();
+	void conversationStore.saveToStorage();
 }
 
 // ─── MutationObserver ─────────────────────────────────────────────────────────────────────
@@ -240,7 +241,7 @@ function setupPeriodicPush(refreshUI: () => void) {
 			// Sprint 5: persist only when new messages arrived — writing the full
 			// session payload every 30s (even when idle) caused avoidable storage churn.
 			if (conversationStore.messages.length !== prevCount) {
-				conversationStore.saveToStorage();
+				void conversationStore.saveToStorage();
 			}
 		}
 	}, 30000);
@@ -378,24 +379,19 @@ function ensureUI() {
 	console.log("[AI Sidebar] shadowRoot attached, calling refreshUI...");
 	try {
 		refreshUI();
-		loadFabPosition();
+		void loadFabPosition();
 		setupKeyboardShortcuts(shadowRoot, refreshUI);
 	} catch (e) {
 		console.error("[AI Sidebar] refreshUI/loadFabPosition failed:", e);
 	}
 }
 
-// Load FAB position from chrome.storage
-function loadFabPosition() {
-	if (typeof chrome !== "undefined" && chrome.storage) {
-		chrome.storage.local.get(
-			"fabPosition",
-			(r: { fabPosition?: { x: number; y: number } }) => {
-				if (r.fabPosition && fab.position === null)
-					fab.position = r.fabPosition;
-			},
-		);
-	}
+// Load FAB position from storage. Async because the storage adapter is;
+// the caller does not need to await it — it only warms an initial position.
+async function loadFabPosition() {
+	const saved = (await storageGet("fabPosition")) as
+		{ x: number; y: number } | undefined;
+	if (saved && fab.position === null) fab.position = saved;
 }
 
 // Wrap bootstrap in try-catch so any module-level error is caught.

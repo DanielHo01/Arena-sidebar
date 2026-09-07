@@ -3,7 +3,8 @@
 //   buildFab       — () => HTMLElement
 //   saveFabPosition — (x: number, y: number) => void
 
-import { fab, panel, contextValid, invalidateContext } from "../state";
+import { fab, panel } from "../state";
+import { storageSet } from "../platform/storage";
 import { ICON_MESSAGE_SVG } from "./styles";
 
 let fabDragX = 0;
@@ -13,19 +14,9 @@ let fabDragY = 0;
 
 export function saveFabPosition(x: number, y: number) {
 	fab.position = { x, y };
-	if (!contextValid) return;
-	if (typeof chrome !== "undefined" && chrome.storage) {
-		try {
-			chrome.storage.local.set({ fabPosition: fab.position }, () => {
-				if (chrome.runtime.lastError) {
-					invalidateContext();
-					return;
-				}
-			});
-		} catch {
-			/* intentionally empty — extension context invalidated */
-		}
-	}
+	// Fire and forget: a failed write loses only the saved position, and the
+	// adapter never rejects, so this cannot break the drag handler.
+	void storageSet("fabPosition", fab.position);
 }
 
 // ─── FAB builder ─────────────────────────────────────────────────────────────────

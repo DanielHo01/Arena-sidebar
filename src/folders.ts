@@ -8,7 +8,18 @@
 //   getSessionsInFolder — list sessions in a folder
 
 import type { Disposer, SessionFolder, SessionMeta } from "./types";
-import { contextValid } from "./state";
+import {
+	findArenaQuickNavContainer,
+	queryHistoryLinks,
+} from "./platform/arenaDom";
+import {
+	onStorageChanged,
+	storageGet,
+	storageAvailable,
+	storageGetAll,
+	storageRemove,
+	storageSet,
+} from "./platform/storage";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
 
@@ -46,55 +57,17 @@ export const foldersState = {
 export const FOLDERS_KEY = "edge-ai-sidebar:folders";
 
 function saveToStorage() {
-	if (!contextValid) return;
-	if (typeof chrome === "undefined" || !chrome.storage) return;
-	try {
-		chrome.storage.local.set(
-			{
-				[FOLDERS_KEY]: {
-					folders: foldersState.folders,
-					sessions: Array.from(foldersState.sessions.entries()),
-				},
-			},
-			() => {
-				if (chrome.runtime.lastError) {
-					// Mark context invalid so future calls bail early
-				}
-			},
-		);
-	} catch {
-		/* storage write may fail if context is invalidated */
-	}
+	void storageSet(FOLDERS_KEY, {
+		folders: foldersState.folders,
+		sessions: Array.from(foldersState.sessions.entries()),
+	});
 }
 
-function loadFromStorage(): Promise<void> {
-	if (typeof chrome === "undefined" || !chrome.storage)
-		return Promise.resolve();
-	return new Promise((resolve) => {
-		try {
-			chrome.storage.local.get(FOLDERS_KEY, (r) => {
-				try {
-					const data = (r as Record<string, unknown>)[FOLDERS_KEY] as
-						| {
-								folders: SessionFolder[];
-								sessions: [string, SessionMeta][];
-						  }
-						| undefined;
-					if (data?.folders?.length) {
-						foldersState.folders = data.folders;
-					}
-					if (data?.sessions?.length) {
-						foldersState.sessions = new Map(data.sessions);
-					}
-				} catch {
-					/* ignore parse errors */
-				}
-				resolve();
-			});
-		} catch {
-			resolve();
-		}
-	});
+async function loadFromStorage(): Promise<void> {
+	const data = (await storageGet(FOLDERS_KEY)) as
+		{ folders: SessionFolder[]; sessions: [string, SessionMeta][] } | undefined;
+	if (data?.folders?.length) foldersState.folders = data.folders;
+	if (data?.sessions?.length) foldersState.sessions = new Map(data.sessions);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────────────
@@ -188,27 +161,6 @@ const ARENA_FOLDER_ENTRY_ATTR = "data-ai-sidebar-folder-entry";
  * Locate the Arena sidebar-wrapper element.
  * Returns null if Arena DOM is not present (graceful degradation).
  */
-function findArenaSidebarWrapper(): HTMLElement | null {
-	return document.querySelector<HTMLElement>('[class*="sidebar-wrapper"]');
-}
-
-/**
- * Navigate to the quick-nav container (Child 2) inside the floating sidebar.
- * This is where New Chat / Leaderboard / Search live.
- */
-function findArenaQuickNavContainer(): HTMLElement | null {
-	const wrapper = findArenaSidebarWrapper();
-	if (!wrapper) return null;
-	const floating = wrapper.children[0];
-	if (!floating) return null;
-	const bgSidebar = floating.children[1];
-	if (!bgSidebar) return null;
-	const floatingRoot = bgSidebar.children[0];
-	if (!floatingRoot) return null;
-	const quickNav = floatingRoot.children[2];
-	if (!quickNav || quickNav.tagName !== "DIV") return null;
-	return quickNav as HTMLElement;
-}
 
 /**
  * Build the 🗂 Session Library anchor element.
@@ -296,12 +248,9 @@ export function toggleArenaSessionLibrarySection(): void {
  * If the inline section is currently open, re-renders it immediately.
  * Call once from content.ts bootstrap.
  */
-export function setupFoldersStorageSync(): void {
-	if (typeof chrome === "undefined" || !chrome.storage) return;
-	if (!contextValid) return;
-	chrome.storage.onChanged.addListener((changes) => {
-		if (!(FOLDERS_KEY in changes)) return;
-		const { newValue } = changes[FOLDERS_KEY] as {
+export function setupFoldersStorageSync(): Disposer {
+	return onStorageChanged(FOLDERS_KEY, (change) => {
+		const { newValue } = change as {
 			newValue?: {
 				folders: SessionFolder[];
 				sessions: [string, SessionMeta][];
@@ -673,8 +622,7 @@ export function setupHistoryContextMenu(): Disposer {
 
 	// Bind existing links
 	function bindLinks() {
-		const links =
-			document.querySelectorAll<HTMLAnchorElement>('a[href*="/c/"]');
+		const links = queryHistoryLinks(document);
 		links.forEach((link) => {
 			if (link.dataset.aiSidebarCtxBound) return;
 			link.dataset.aiSidebarCtxBound = "1";
@@ -746,46 +694,26 @@ export function upsertSessionMetaFromStore(
  *
  * After migration the old keys are deleted so that future startup does not re-migrate.
  */
-export function migrateHistoryTitles(): Promise<void> {
-	if (
-		typeof chrome === "undefined" ||
-		!chrome.storage ||
-		!chrome.storage.local
-	) {
-		return Promise.resolve();
+export async function migrateHistoryTitles(): Promise<void> {
+	if (!storageAvailable()) return;
+	const all = await storageGetAll();
+	const keysToRemove: string[] = [];
+	for (const [key, value] of Object.entries(all)) {
+		const match = /^historyTitle_(.+)$/.exec(key);
+		if (match && typeof value === "string" && value.trim()) {
+			const sid = match[1];
+			setSessionCustomTitle(sid, value.trim());
+			keysToRemove.push(key);
+		}
 	}
-	return new Promise((resolve) => {
-		chrome.storage.local.get(null, (all) => {
-			if (chrome.runtime.lastError) {
-				console.warn("[AI Sidebar] migrateHistoryTitles: storage unavailable");
-				resolve();
-				return;
-			}
-			const keysToRemove: string[] = [];
-			for (const [key, value] of Object.entries(all)) {
-				const match = /^historyTitle_(.+)$/.exec(key);
-				if (match && typeof value === "string" && value.trim()) {
-					const sid = match[1];
-					setSessionCustomTitle(sid, value.trim());
-					keysToRemove.push(key);
-				}
-			}
-			if (keysToRemove.length === 0) {
-				resolve();
-				return;
-			}
-			chrome.storage.local.remove(keysToRemove, () => {
-				if (chrome.runtime.lastError) {
-					console.warn(
-						"[AI Sidebar] migrateHistoryTitles: failed to remove old keys",
-					);
-				} else {
-					console.log(
-						`[AI Sidebar] migrateHistoryTitles: migrated ${keysToRemove.length} key(s)`,
-					);
-				}
-				resolve();
-			});
-		});
-	});
+	if (keysToRemove.length === 0) return;
+	if (await storageRemove(keysToRemove)) {
+		console.log(
+			`[AI Sidebar] migrateHistoryTitles: migrated ${keysToRemove.length} key(s)`,
+		);
+	} else {
+		console.warn(
+			"[AI Sidebar] migrateHistoryTitles: failed to remove old keys",
+		);
+	}
 }

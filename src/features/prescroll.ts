@@ -8,15 +8,14 @@
 // bootstrap IIFE at module scope, so importing it has side effects.
 
 import { USER_MESSAGE_SELECTOR, ASSISTANT_MESSAGE_SELECTOR } from "../extract";
+import { SCROLL_CONTAINER_SELECTOR } from "../platform/arenaDom";
 
 // ─── Pre-scroll: force-render all virtual-scrolled messages ────────────────────────────────
 
 export function findScrollContainer(): HTMLElement | null {
 	// The real scroll container is inside <main> with overscroll-none —
 	// Arena renders only ~8 messages in DOM and progressively loads more as user scrolls.
-	const c = document.querySelector(
-		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-	);
+	const c = document.querySelector(SCROLL_CONTAINER_SELECTOR);
 	if (
 		c &&
 		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
@@ -48,9 +47,7 @@ let preScrollActive = false; // suppress observer work while forced-scrolling
 // Lightweight container lookup for preScroll retries — avoids the full <main>
 // fallback scan (querySelectorAll("*") + per-element scrollHeight forces reflow).
 function peekScrollContainer(): HTMLElement | null {
-	const c = document.querySelector(
-		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-	);
+	const c = document.querySelector(SCROLL_CONTAINER_SELECTOR);
 	if (
 		c &&
 		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3

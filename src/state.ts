@@ -38,13 +38,3 @@ export const timers = {
 	pollInterval: null as ReturnType<typeof setInterval> | null,
 	refreshInterval: null as ReturnType<typeof setInterval> | null,
 };
-
-// ─── Extension context validity (Sprint 7 fix) ─────────────────────────────────────────────
-// Set to false when chrome.runtime.lastError fires; all storage calls check this.
-
-export let contextValid = true;
-
-/** Call after any chrome.storage call that sets chrome.runtime.lastError. */
-export function invalidateContext() {
-	contextValid = false;
-}

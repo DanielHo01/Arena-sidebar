@@ -19,17 +19,18 @@ export default defineConfig({
 			// percentage move without any behaviour being tested.
 			exclude: ["src/types.ts", "src/ui/styles.ts"],
 			// ── Ratchet ────────────────────────────────────────────────────
-			// These are FLOORS, not targets: set to the level actually measured
-			// when the gate was introduced, and only ever raised. Coverage is
-			// currently low because content.ts and ui/* are untestable by
-			// construction (side effects at import, no seams) -- lifting them is
-			// the Phase 4/5 refactor, not something a threshold can force today.
+			// These are FLOORS, not targets: set just under the level actually
+			// measured, and only ever raised. Coverage is still low because
+			// content.ts and ui/* are untestable by construction (side effects
+			// at import, no seams) -- lifting them is the Phase 4/5 refactor,
+			// not something a threshold can force today.
 			// Do not lower these without saying so in the commit message.
+			//   measured: statements 26.87 / branches 28.94 / functions 32.67 / lines 26.81
 			thresholds: {
-				statements: 12,
-				branches: 12,
-				functions: 14,
-				lines: 12,
+				statements: 26,
+				branches: 28,
+				functions: 32,
+				lines: 26,
 			},
 		},
 	},

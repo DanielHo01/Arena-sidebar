@@ -9,7 +9,8 @@
 // DOM binding runs as a separate pass: fingerprint → domId.
 
 import type { SidebarMessage, SidebarRound, MessageOrigin } from "./types";
-import { cachedElements, contextValid, invalidateContext } from "./state";
+import { cachedElements } from "./state";
+import { storageGet, storageSet } from "./platform/storage";
 import { upsertSessionMetaFromStore } from "./folders";
 
 // ─── Stable fingerprint for content matching ────────────────────────────────────────
@@ -48,10 +49,8 @@ export const conversationStore = {
 	},
 
 	/** Save current messages + rounds to chrome.storage.local (keyed by sessionId). */
-	saveToStorage(): void {
-		if (!contextValid) return;
+	async saveToStorage(): Promise<void> {
 		if (!this.sessionId || this.messages.length === 0) return;
-		if (typeof chrome === "undefined" || !chrome.storage) return;
 		const key = `edge-ai-sidebar:session:${this.sessionId}`;
 		const payload = {
 			messages: this.messages,
@@ -59,34 +58,24 @@ export const conversationStore = {
 			lastSavedAt: Date.now(),
 			sessionId: this.sessionId,
 		};
+		if (!(await storageSet(key, payload))) return;
+		// Keep sessionMeta in sync, but only after the write actually landed.
+		// Use page title (character/persona name) as session title.
+		const rawTitle = document.title || "";
+		const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
+		const sessionTitle =
+			(pageTitle && pageTitle.length > 1 ? pageTitle : this.rounds[0]?.title) ||
+			"未命名会话";
 		try {
-			chrome.storage.local.set({ [key]: payload }, () => {
-				if (chrome.runtime.lastError) {
-					invalidateContext();
-					return;
-				}
-				// Sprint 9: keep sessionMeta in sync (outside callback - fire and forget)
-				// Use page title (character/persona name) as session title
-				const rawTitle = document.title || "";
-				const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
-				const sessionTitle =
-					(pageTitle && pageTitle.length > 1
-						? pageTitle
-						: this.rounds[0]?.title) || "未命名会话";
-				try {
-					upsertSessionMetaFromStore(
-						this.sessionId,
-						sessionTitle,
-						this.rounds.length,
-						this.messages.length,
-						location.href,
-					);
-				} catch {
-					/* folders storage may fail silently */
-				}
-			});
+			upsertSessionMetaFromStore(
+				this.sessionId,
+				sessionTitle,
+				this.rounds.length,
+				this.messages.length,
+				location.href,
+			);
 		} catch {
-			/* intentionally empty — extension context invalidated */
+			/* folders storage may fail silently */
 		}
 	},
 
@@ -95,51 +84,33 @@ export const conversationStore = {
 	 * Rejects if no cached data found or sessionId mismatch.
 	 * Resolves with restored count on success.
 	 */
-	loadFromStorage(
+	async loadFromStorage(
 		sessionId: string,
 	): Promise<{ msgs: number; rounds: number } | null> {
-		if (!contextValid) return Promise.resolve(null);
-		if (!sessionId) return Promise.resolve(null);
-		if (typeof chrome === "undefined" || !chrome.storage)
-			return Promise.resolve(null);
+		if (!sessionId) return null;
 		const key = `edge-ai-sidebar:session:${sessionId}`;
-		return new Promise((resolve) => {
-			try {
-				chrome.storage.local.get(key, (result) => {
-					if (chrome.runtime.lastError) {
-						invalidateContext();
-						resolve(null);
-						return;
-					}
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const raw = result[key] as any;
-					if (
-						!raw ||
-						!raw.messages ||
-						raw.messages.length === 0 ||
-						raw.sessionId !== sessionId
-					) {
-						resolve(null);
-						return;
-					}
-					// Sprint 7: migrate persisted 'source' field → 'origin'
-					this.messages = (raw.messages as SidebarMessage[]).map((m) => {
-						const old = m as SidebarMessage & { source?: MessageOrigin };
-						return { ...m, origin: old.source ?? "dom" } as SidebarMessage;
-					});
-					this.rounds = (raw.rounds ?? []) as SidebarRound[];
-					this.lastOrigin = "bootstrap";
-					bindDomAnchors();
-					console.log(
-						`[AI Sidebar] persistence: restored ${this.messages.length} msgs, ${this.rounds.length} rounds`,
-					);
-					resolve({ msgs: this.messages.length, rounds: this.rounds.length });
-				});
-			} catch {
-				/* intentionally empty — extension context invalidated */
-				resolve(null);
-			}
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const raw = (await storageGet(key)) as any;
+		if (
+			!raw ||
+			!raw.messages ||
+			raw.messages.length === 0 ||
+			raw.sessionId !== sessionId
+		) {
+			return null;
+		}
+		// Sprint 7: migrate persisted 'source' field → 'origin'
+		this.messages = (raw.messages as SidebarMessage[]).map((m) => {
+			const old = m as SidebarMessage & { source?: MessageOrigin };
+			return { ...m, origin: old.source ?? "dom" } as SidebarMessage;
 		});
+		this.rounds = (raw.rounds ?? []) as SidebarRound[];
+		this.lastOrigin = "bootstrap";
+		bindDomAnchors();
+		console.log(
+			`[AI Sidebar] persistence: restored ${this.messages.length} msgs, ${this.rounds.length} rounds`,
+		);
+		return { msgs: this.messages.length, rounds: this.rounds.length };
 	},
 };
 
