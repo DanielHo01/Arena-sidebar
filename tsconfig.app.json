@@ -13,7 +13,6 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
 
     /* Path aliases */
     "baseUrl": ".",
@@ -23,6 +22,11 @@
     "ignoreDeprecations": "6.0",
 
     /* Linting */
+    // TS 6 already enables the strict family by default; stating it explicitly
+    // pins the behaviour so a future compiler default cannot silently loosen it.
+    // Verified zero-cost: `tsc -p tsconfig.app.json --strict` reports 0 errors.
+    "strict": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
