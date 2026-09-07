@@ -285,6 +285,26 @@ describe("reconcileList", () => {
 			expect(panel.showHiddenRounds).toBe(true);
 			expect(refreshUI).toHaveBeenCalledTimes(1);
 		});
+
+		it("keeps the bar after the rows when reveal mode fills an empty list", () => {
+			// The empty state renders the bar with no rows; entering reveal
+			// mode then CREATES rows after it. Row insertion uses
+			// insertBefore(el, children[idx] ?? null), and for an idx past the
+			// last row that ?? null APPENDS — past the bar. Without the
+			// re-append guard the bar would strand between rows.
+			hiddenRoundIds.add("a");
+			hiddenRoundIds.add("b");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			expect(list.querySelector(".empty")).not.toBeNull();
+
+			panel.showHiddenRounds = true;
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a", "b"]);
+			const bar = list.querySelector(".hidden-bar");
+			expect(list.lastElementChild).toBe(bar);
+			expect(list.children[1]).not.toBe(bar); // not between the rows
+		});
 	});
 
 	describe("reveal mode", () => {
