@@ -8,6 +8,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "typecheck": "tsc -b --pretty false",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "npm run test:mirror && npm run test:src",
     "test:mirror": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs && node scripts/test-conversation-store.cjs",
     "test:src": "tsx scripts/test-src-rounds.ts && tsx scripts/test-src-store.ts && tsx scripts/test-src-title-resolution.ts"
@@ -18,6 +21,7 @@
     "@types/node": "^24.13.2",
     "jsdom": "^25.0.1",
     "oxlint": "^1.69.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.23.5",
     "typescript": "~6.0.2",
     "vite": "^8.1.0"

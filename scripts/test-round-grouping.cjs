@@ -42,13 +42,11 @@ function runTest(label, expected, actual, opts = {}) {
 const msgs60 = generateAlternating(60);
 const rounds60 = groupIntoRounds(msgs60);
 runTest("60 alternating messages → 30 rounds", 30, rounds60.length, {
-	sample: rounds60
-		.slice(0, 3)
-		.map((r) => ({
-			id: r.id,
-			title: r.title.slice(0, 40),
-			msgCount: r.messageCount,
-		})),
+	sample: rounds60.slice(0, 3).map((r) => ({
+		id: r.id,
+		title: r.title.slice(0, 40),
+		msgCount: r.messageCount,
+	})),
 });
 
 const msgs1 = generateAlternating(1);

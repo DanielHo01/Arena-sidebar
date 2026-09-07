@@ -149,13 +149,11 @@ function runTest(html, label, opts) {
 				count: messages.length,
 				passed,
 				checks,
-				samples: messages
-					.slice(0, 2)
-					.map((m) => ({
-						id: m.id,
-						role: m.role,
-						contentPreview: m.content.slice(0, 50),
-					})),
+				samples: messages.slice(0, 2).map((m) => ({
+					id: m.id,
+					role: m.role,
+					contentPreview: m.content.slice(0, 50),
+				})),
 			},
 			null,
 			2,

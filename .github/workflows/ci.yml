@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# The whole pipeline runs in ~5s locally; cancelling superseded runs on the
+# same ref keeps feedback fast without risking main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: format · lint · typecheck · test · build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format (Prettier)
+        run: npm run format:check
+
+      - name: Lint (oxlint)
+        run: npm run lint -- --max-warnings=20
+
+      - name: Typecheck (tsc)
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Regression guard: bundle size must not silently grow.
+      # Baseline at 2951896 was content.ts 53.75 kB / gzip 16.53 kB.
+      - name: Report bundle size
+        run: |
+          echo "### Bundle size" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -l dist/assets/*.js | awk '{printf "%-40s %8d bytes\n", $9, $5}' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
