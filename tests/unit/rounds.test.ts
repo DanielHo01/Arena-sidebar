@@ -1,7 +1,7 @@
 // Real-source test: round grouping via computeRounds (actual production logic).
 // Migrated verbatim from scripts/test-src-rounds.ts (10 assertions).
 import { describe, it, expect } from "vitest";
-import { computeRounds } from "../../src/conversationStore";
+import { computeRounds } from "../../src/core/rounds";
 import type { SidebarMessage } from "../../src/types";
 
 function msg(

@@ -12,6 +12,7 @@ import {
 	findArenaQuickNavContainer,
 	queryHistoryLinks,
 } from "./platform/arenaDom";
+import { onStoreChange } from "./conversationStore";
 import {
 	onStorageChanged,
 	storageGet,
@@ -685,6 +686,34 @@ export function upsertSessionMetaFromStore(
 		url,
 	});
 	saveToStorage();
+}
+
+/**
+ * Keep the session index in step with the conversation store.
+ *
+ * This is the subscriber half of the seam that replaced
+ * conversationStore -> folders (a data layer importing the UI injection layer).
+ * The store emits a snapshot after each successful save; we derive the display
+ * title here, because reading document.title is DOM knowledge that does not
+ * belong in the data layer either.
+ *
+ * Call once from content.ts bootstrap.
+ */
+export function setupSessionMetaSync(): Disposer {
+	return onStoreChange((snap) => {
+		const rawTitle = document.title || "";
+		const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
+		const sessionTitle =
+			(pageTitle && pageTitle.length > 1 ? pageTitle : snap.firstRoundTitle) ||
+			"未命名会话";
+		upsertSessionMetaFromStore(
+			snap.sessionId,
+			sessionTitle,
+			snap.roundCount,
+			snap.messageCount,
+			location.href,
+		);
+	});
 }
 
 /**

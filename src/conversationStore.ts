@@ -8,22 +8,63 @@
 // The store maintains canonical messages + computed rounds.
 // DOM binding runs as a separate pass: fingerprint → domId.
 
-import type { SidebarMessage, SidebarRound, MessageOrigin } from "./types";
+import type {
+	Disposer,
+	MessageOrigin,
+	SidebarMessage,
+	SidebarRound,
+} from "./types";
 import { cachedElements } from "./state";
 import { storageGet, storageSet } from "./platform/storage";
-import { upsertSessionMetaFromStore } from "./folders";
+import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
+import { computeRounds } from "./core/rounds";
 
-// ─── Stable fingerprint for content matching ────────────────────────────────────────
+// ─── Change subscription ──────────────────────────────────────────────────────────────
+//
+// This is the seam that keeps the data layer from importing the UI layer.
+// conversationStore used to call folders.upsertSessionMetaFromStore() directly
+// after each successful write, which made the data layer depend on 760 lines of
+// CRUD + Arena DOM injection + context menu + inline CSS. It now emits a
+// snapshot and folders.ts subscribes (setupSessionMetaSync).
 
-function fingerprint(text: string): string {
-	// Normalize: trim, collapse whitespace, lowercase.
-	// Use first 200 chars as stable key.
-	const normalized = text
-		.trim()
-		.replace(/\s+/g, " ")
-		.toLowerCase()
-		.slice(0, 200);
-	return "fp-" + normalized.length + "-" + normalized.slice(0, 80);
+/** What a subscriber needs to update the session index. No DOM, no storage. */
+export interface StoreSnapshot {
+	sessionId: string;
+	messageCount: number;
+	roundCount: number;
+	/** First round's title, for callers that need a fallback name. */
+	firstRoundTitle: string;
+}
+
+type StoreListener = (snapshot: StoreSnapshot) => void;
+const storeListeners = new Set<StoreListener>();
+
+/** Subscribe to successful saves. Returns a Disposer. */
+export function onStoreChange(listener: StoreListener): Disposer {
+	storeListeners.add(listener);
+	return () => {
+		storeListeners.delete(listener);
+	};
+}
+
+/**
+ * Notify subscribers. A listener that throws is logged and skipped: one broken
+ * subscriber must not abort the save or starve the others.
+ */
+function emitStoreChange(): void {
+	const snapshot: StoreSnapshot = {
+		sessionId: conversationStore.sessionId,
+		messageCount: conversationStore.messages.length,
+		roundCount: conversationStore.rounds.length,
+		firstRoundTitle: conversationStore.rounds[0]?.title ?? "",
+	};
+	for (const listener of storeListeners) {
+		try {
+			listener(snapshot);
+		} catch (error) {
+			console.warn("[AI Sidebar] store listener threw:", error);
+		}
+	}
 }
 
 // ─── Conversation store ─────────────────────────────────────────────────────────────
@@ -59,24 +100,9 @@ export const conversationStore = {
 			sessionId: this.sessionId,
 		};
 		if (!(await storageSet(key, payload))) return;
-		// Keep sessionMeta in sync, but only after the write actually landed.
-		// Use page title (character/persona name) as session title.
-		const rawTitle = document.title || "";
-		const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
-		const sessionTitle =
-			(pageTitle && pageTitle.length > 1 ? pageTitle : this.rounds[0]?.title) ||
-			"未命名会话";
-		try {
-			upsertSessionMetaFromStore(
-				this.sessionId,
-				sessionTitle,
-				this.rounds.length,
-				this.messages.length,
-				location.href,
-			);
-		} catch {
-			/* folders storage may fail silently */
-		}
+		// Subscribers (folders' session index) are notified only after the write
+		// actually landed, preserving the old ordering guarantee.
+		emitStoreChange();
 	},
 
 	/**
@@ -114,130 +140,7 @@ export const conversationStore = {
 	},
 };
 
-// ─── Round computation ───────────────────────────────────────────────────────────────
-
-export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
-	const rounds: SidebarRound[] = [];
-	let current: SidebarRound | null = null;
-	let pendingLead: SidebarMessage | null = null;
-	let roundIdx = 0;
-	// Sprint 8: preview tracking
-	let currentFirstUser: SidebarMessage | null = null;
-	let currentFirstAssistant: SidebarMessage | null = null;
-	let currentAssistantCount = 0;
-
-	const pushRound = (r: SidebarRound) => {
-		// Sprint 8: fill preview fields before pushing — but never clobber values the
-		// caller already set explicitly. The lead-assistant round sets assistantPreview
-		// and assistantCount by hand; currentFirst*/currentAssistantCount are still
-		// null/0 at that point, so plain assignment used to wipe them back.
-		r.userPreview ??= currentFirstUser?.content.slice(0, 60) || undefined;
-		r.assistantPreview ??=
-			currentFirstAssistant?.content.slice(0, 100) || undefined;
-		r.assistantCount ??= currentAssistantCount;
-		rounds.push(r);
-	};
-
-	for (const msg of msgs) {
-		if (msg.role === "assistant" && current === null) {
-			// lead assistant (before first user)
-			pendingLead = msg;
-			continue;
-		}
-		if (msg.role === "user") {
-			// Push previous round
-			if (current !== null) {
-				pushRound(current);
-				roundIdx++;
-			} else if (pendingLead) {
-				// Lead assistant round — no user, use assistant as preview
-				const leadRound: SidebarRound = {
-					id: pendingLead.id,
-					title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-					messageCount: 1,
-					index: roundIdx,
-					hasAnchor: !!pendingLead.domId,
-					// Sprint 8: lead assistant shows as both user and assistant preview
-					userPreview: undefined,
-					assistantPreview: pendingLead.content.slice(0, 100),
-					assistantCount: 1,
-				};
-				pushRound(leadRound);
-				roundIdx++;
-			}
-			// Start new round with user
-			currentFirstUser = msg;
-			currentFirstAssistant = null;
-			currentAssistantCount = 0;
-			current = {
-				id: msg.id,
-				title: msg.content.slice(0, 80),
-				messageCount: 0,
-				index: roundIdx,
-				hasAnchor: false,
-				userPreview: undefined,
-				assistantPreview: undefined,
-			};
-			pendingLead = null;
-		}
-		if (current !== null) {
-			current.messageCount++;
-			if (msg.domId) current.hasAnchor = true;
-			if (msg.role === "assistant") {
-				currentAssistantCount++;
-				if (currentFirstAssistant === null) currentFirstAssistant = msg;
-			}
-		}
-	}
-
-	if (current) {
-		pushRound(current);
-		roundIdx++;
-	} else if (pendingLead && rounds.length === 0) {
-		// Lead assistant only — no rounds at all
-		const leadRound: SidebarRound = {
-			id: pendingLead.id,
-			title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-			messageCount: 1,
-			index: 0,
-			hasAnchor: !!pendingLead.domId,
-			userPreview: undefined,
-			assistantPreview: pendingLead.content.slice(0, 100),
-			assistantCount: 1,
-		};
-		pushRound(leadRound);
-	}
-
-	return rounds;
-}
-
 // ─── Merge helpers ─────────────────────────────────────────────────────────────────
-
-/** Content-only dedup key for a message. */
-function baseKey(msg: SidebarMessage): string {
-	return msg.fingerprint || fingerprint(msg.content);
-}
-
-/**
- * Number each message by how many times its content already appeared earlier in
- * this source's own ordered list. Two properties matter:
- *   - re-extracting an unchanged DOM renumbers identically, so refresh stays
- *     idempotent and does not duplicate anything;
- *   - genuine repeats (the user really did send "继续" three times) get distinct
- *     numbers and therefore survive as distinct turns.
- * Cross-source merge still works because both DOM and capture enumerate their
- * occurrences in the same chronological order, so capture's 0th "继续" lands on
- * DOM's 0th.
- */
-function withOccurrences(msgs: SidebarMessage[]): SidebarMessage[] {
-	const seen = new Map<string, number>();
-	return msgs.map((m) => {
-		const base = fingerprint(m.content);
-		const n = seen.get(base) ?? 0;
-		seen.set(base, n + 1);
-		return { ...m, fingerprint: base, occurrence: n };
-	});
-}
 
 /** Add a message to the store if not already present (by content + occurrence). */
 function upsertMessage(msg: SidebarMessage): boolean {

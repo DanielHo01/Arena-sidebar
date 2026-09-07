@@ -41,6 +41,7 @@ import {
 	setupHistoryContextMenu,
 	toggleArenaSessionLibrarySection,
 	setupFoldersStorageSync,
+	setupSessionMetaSync,
 } from "./folders";
 import { buildFab } from "./ui/fab";
 import {
@@ -426,6 +427,7 @@ try {
 			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
 			.catch(() => {}); // fire-and-forget
 		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
+		setupSessionMetaSync(); // Phase 3: folders subscribes to store changes
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),

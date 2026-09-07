@@ -14,10 +14,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	addCapturedMessage,
-	computeRounds,
 	conversationStore,
 	refreshStore,
 } from "../../src/conversationStore";
+import { computeRounds } from "../../src/core/rounds";
 
 beforeEach(() => {
 	conversationStore.reset();

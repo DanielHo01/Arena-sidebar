@@ -417,12 +417,47 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 
 **本轮记录的自身错误**（避免重犯）：上一轮报告"棘轮阈值已抬到 23/24/27/23"是**错的**。python 替换用了 2 个 tab 缩进，`vitest.config.ts` 实际是 3 个 tab，没匹配上，而 `print("ok")` 无条件执行掩盖了失败。文件里一直是 12/12/14/12。现已按实测下限改为 **26/28/32/26**，并用"临时设 99 → exit 1"验证闸门确实生效。教训：**替换后必须回读确认，不能只看脚本是否报错。**
 
-### Phase 3 — 抽 `core/` 层（纯函数化）
+### Phase 3 — 抽 `core/` 层（纯函数化） ✅ 已完成
 
-- [ ] `computeRounds` / merge / fingerprint 从 `conversationStore` 抽到 `core/`
-- [ ] `buildJson` / `buildMarkdown` / `buildSummaryPrompt` 从 `ui/modals.ts` 抽到 `core/serialize.ts`（当前它们和 DOM 弹窗代码混在一个文件里）
-- [ ] **斩断 `conversationStore → folders`**（P2）：改为 `store.onChange` 订阅
-- **验收**：`core/` 覆盖率 ≥ 90%；**删除 3 个 mirror `.cjs`**（被真实测试取代，20 个纸面 assertion 归零但真实覆盖率上升）
+- [x] `computeRounds` / merge / fingerprint 从 `conversationStore` 抽到 `core/`
+- [x] `buildJson` / `buildMarkdown` / `buildSummaryPrompt` 从 `ui/modals.ts` 抽到 `core/serialize.ts`
+- [x] **斩断 `conversationStore → folders`**（P2）：改为 `onStoreChange` 订阅
+- [x] **删除 3 个 mirror `.cjs`**
+- **验收**：`src/core/` 覆盖率 **99.17% stmts / 100% funcs / 100% lines**（branch 89.74%）—— 达标
+
+**新增模块**
+
+| 模块 | 内容 | 覆盖率 |
+| --- | --- | --- |
+| `core/fingerprint.ts` | `fingerprint` / `baseKey` / `withOccurrences`（原为 `conversationStore` 私有，无法单测） | 100% |
+| `core/rounds.ts` | `computeRounds` | 97.72% |
+| `core/serialize.ts` | `buildSummaryPrompt` / `buildExportRounds` / `buildJson` / `buildMarkdown`（原为 `exportConversation` 内的闭包，与 DOM 弹窗代码混在一起） | 100% |
+
+**实测验收数据**
+
+| 指标 | 重构前 | 重构后 |
+| --- | --- | --- |
+| `conversationStore` → `folders` import | 1（数据层依赖 UI 注入层） | **0** |
+| `src/ui/modals.ts` | 373 行 | **271 行** |
+| `src/conversationStore.ts` | ~530 行 | **400 行** |
+| Vitest 测试 | 131 | **162** |
+| 覆盖率 statements | 26.87% | **31.44%** |
+| mirror `.cjs` 纸面 assertion | 20 | **0**（删除） |
+| Bundle | 53.99 kB | 54.50 kB / gzip 16.95 |
+
+**分层倒置是怎么斩断的**：`conversationStore.saveToStorage()` 原先直接调 `folders.upsertSessionMetaFromStore()`，让数据层依赖 760 行的 UI 注入层。现在 store 暴露 `onStoreChange(listener): Disposer`，成功写入后 emit 一个 `StoreSnapshot`（`sessionId` / `messageCount` / `roundCount` / `firstRoundTitle`），由 `folders.setupSessionMetaSync()` 订阅。顺带把 `document.title` 的读取也移到了订阅方——那是 DOM 知识，同样不该待在数据层。9 个测试钉住契约：emit 时机（仅写入成功后）、快照内容、多订阅者、Disposer 生效、**抛异常的订阅者不能拖垮 store 也不能饿死其他订阅者**。
+
+**为什么能安全删掉 mirror `.cjs`**（逐个面比对，不是想当然）：
+
+| mirror 覆盖面 | 用例数 | 被谁取代 |
+| --- | --- | --- |
+| round 分组（含"60 条全 assistant → 1 轮"的原始 bug 场景） | 6 | `rounds.test.ts`（10） |
+| store 去重 / domId 锚点绑定 / stale 缓存清理 | 9 | `store.test.ts`（8）+ `dedup.test.ts`（6） |
+| round preview 字段与截断长度 | 6 | `rounds.test.ts` |
+| 标题回退链 | 1 | `titles.test.ts`（6，100% 覆盖） |
+| extract 选择器 | 4 组 | `extract.test.ts`（16）——且 mirror 断言的 `data-message-author-role` / `data-role` **生产代码早已不用**，属于**误导**而非保护 |
+
+**遗留**：`tests/arena-mock.html` 与 `scripts/e2e-floating.cjs` 仍用旧 selector 且硬编码 `D:/edge-ai-sidebar` + `require('ws')`（`package.json` 无 `ws` 依赖），任何机器上都跑不起来 → 归入 Phase 5/6 处理。
 
 ### Phase 4 — 状态收敛为 AppStore
 

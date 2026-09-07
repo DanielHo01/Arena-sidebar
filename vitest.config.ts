@@ -25,12 +25,12 @@ export default defineConfig({
 			// at import, no seams) -- lifting them is the Phase 4/5 refactor,
 			// not something a threshold can force today.
 			// Do not lower these without saying so in the commit message.
-			//   measured: statements 26.87 / branches 28.94 / functions 32.67 / lines 26.81
+			//   measured: statements 31.44 / branches 34.05 / functions 39.92 / lines 31.22
 			thresholds: {
-				statements: 26,
-				branches: 28,
-				functions: 32,
-				lines: 26,
+				statements: 31,
+				branches: 34,
+				functions: 39,
+				lines: 31,
 			},
 		},
 	},
