@@ -355,13 +355,37 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 | `exactOptionalPropertyTypes` | 10 |
 | `noImplicitOverride` | 0 → 已在 Phase 0 顺手加上 |
 
-### Phase 1 — 修用户可见 bug（每个 bug 先加失败测试）
+### Phase 1 — 修用户可见 bug（每个 bug 先加失败测试） ✅ 已完成
 
-- [ ] **fingerprint 加轮次维度**（P5）—— 修「重复短消息塌陷」。测试：3 次「继续」→ 必须得 3 rounds
-- [ ] **`setupHistoryContextMenu` 幂等 + 返回 Disposer**（P4）—— 测试：连调 3 次，监听器必须为 1/1/1
-- [ ] **`resetSessionState` 补全 8 项残留 + `preScrollDone`**（P1）—— 测试：路由切换后 `pendingRequests` 等必须为空
-- [ ] **路由正则统一为 `[^/?#]`**（P3）—— 测试：`/c/abc#frag` → `abc`
-- **验收**：4 个新测试全部"先红后绿"；bundle 无显著增长
+- [x] **fingerprint 加轮次维度**（P5）—— 修「重复短消息塌陷」
+- [x] **`setupHistoryContextMenu` 幂等 + 返回 Disposer**（P4）
+- [x] **路由正则统一为 `[^/?#]`**（P3）
+- [x] **`preScrollDone` 重置**（P1 的一部分）
+- [ ] ~~`resetSessionState` 补全 8 项残留~~ → **改为并入 Phase 4**，见下
+- **验收结果**：
+
+| 项 | 结果 |
+| --- | --- |
+| 测试 | **24 → 59**（Vitest，7 个文件），每个 bug 都先确认红灯 |
+| CI | 本地 + GitHub 双绿，最后一次 48 s |
+| bundle | 53.53 → **54.16 kB**（gzip 16.48 → 16.68），换来 4 个 bug 修复 |
+| `content.ts` | 638 → **487 行** |
+
+**四处修复的实际内容**：
+
+1. **`fix(route)`** —— 新建 `src/platform/route.ts`（目标 platform 层的第一个模块），9 个调用点收敛为 2 个常量。精确界定影响面：只有 `historyTitles.ts` 真的会出错（它匹配 `href`，可带 fragment）；`modals.ts` 匹配的是 `location.pathname`，永不含 `#`，属潜在不一致。
+2. **`fix(folders)`** —— `contextMenuDisposer` 守卫 + 返回 Disposer；新增 `types.ts` 的 `Disposer` 类型。
+3. **`fix(store)`** —— `SidebarMessage` 新增 `occurrence` 字段，去重键从「内容」改为「内容 + 同内容第 N 次」。**没有**把序号拼进 fingerprint 字符串 —— 用户文本本身可以含 `#`，字符串分隔会有歧义，独立字段没有这个问题。`bindDomAnchors` 因此无需改动。
+4. **`fix(prescroll)`** —— 抽出 `src/features/prescroll.ts` + `resetPreScroll()`，路由切换改为先滚动再重建。
+
+**两项计划调整**（都已在 commit message 里说明）：
+
+- **Vitest 从 Phase 6 提前到 Phase 1**：Phase 1 的验收标准是"每个 bug 先加失败测试"，而 4 个 bug 里有 2 个没有 DOM 测不了。3 个 tsx 脚本逐条迁移（10+8+6 = 24 断言 → 24 tests）。**故意不关** worker 隔离（Vitest 提示可省 ~900ms）—— `conversationStore` 是模块级单例，文件间隔离是正确性要求。
+- **`preScroll` 抽取从 Phase 5 提前**：`content.ts` 顶层有 bootstrap IIFE，import 即执行副作用，不抽出来这个修复根本无法测试。
+
+**bug 3 的范围修正（用户决策）**：原计划"补全 `resetSessionState` 的 8 项残留"是错的。这 8 项（`capture.lastRequestTs`/`lastResponseTs`/`pendingRequests`/`chatRounds`、`historyTitles.titleCache`/`cacheLoaded`、`folders.librarySectionOpen`、`fab.prevRoundIds`、`panel.searchQuery`）是 **P1「无状态收敛」的症状**，现在给每个模块加 `resetXxx()` 导出等于写一批 Phase 4 的 `AppStore.reset(sessionId)` 会立刻删掉的代码。**改为并入 Phase 4**，Phase 1 只修了其中真正独立的 `preScrollDone`。
+
+**Phase 1 期间 CI 抓到的自身错误**（记录以免重犯）：新写的 `context-menu.test.ts` 有 3 个类型错误，Vitest 只转译不检查类型所以放过了，`tsc -b` 拦住。→ 这正是 typecheck 必须独立成一步的价值，第一天就兑现。
 
 ### Phase 2 — 抽 `platform/` 层
 
