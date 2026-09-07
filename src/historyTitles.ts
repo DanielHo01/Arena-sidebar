@@ -6,6 +6,7 @@
 
 import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
 import { resolveSessionTitle } from "./titleResolver";
+import { sessionIdFromHref } from "./platform/route";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
 // DEPRECATED: historyTitle_ keys are no longer the canonical title store.
@@ -107,7 +108,7 @@ function restoreAllTitles(): void {
 	const items = document.querySelectorAll('a[href*="/c/"]');
 	items.forEach((item) => {
 		const href = item.getAttribute("href") || "";
-		const sid = href.match(/\/c\/([^/?]+)/)?.[1];
+		const sid = sessionIdFromHref(href);
 		if (sid) restoreTitle(item as HTMLElement, sid);
 	});
 }
@@ -121,7 +122,7 @@ export function setupHistoryTitleEditing() {
 	items.forEach((item) => {
 		const itemEl = item as HTMLElement;
 		const href = item.getAttribute("href") || "";
-		const sid = href.match(/\/c\/([^/?]+)/)?.[1];
+		const sid = sessionIdFromHref(href);
 		if (!sid) return;
 		if (itemEl.dataset.aiSidebarEditable === "1") return;
 		itemEl.dataset.aiSidebarEditable = "1";

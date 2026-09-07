@@ -8,6 +8,7 @@ import type { SidebarMessage, CapturedRound } from "../types";
 import { chatRounds, lookupModelName } from "../capture";
 import { computeRounds } from "../conversationStore";
 import { capture } from "../state";
+import { getSessionId } from "../platform/route";
 
 // ─── Download helper ─────────────────────────────────────────────────────────────────
 
@@ -266,7 +267,7 @@ export function exportConversation(
 	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
-	const sid = location.pathname.match(/\/c\/([^/?]+)/)?.[1] || "";
+	const sid = getSessionId(location.pathname);
 	const rounds = computeRounds(messages);
 	const capturedByUser = new Map<string, CapturedRound>();
 	for (const r of chatRounds.values()) {

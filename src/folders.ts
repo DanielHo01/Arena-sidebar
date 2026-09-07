@@ -10,6 +10,7 @@
 import type { SessionFolder, SessionMeta } from "./types";
 import { contextValid } from "./state";
 import { resolveSessionTitle } from "./titleResolver";
+import { sessionIdFromHref } from "./platform/route";
 
 // ─── Default folders ─────────────────────────────────────────────────────────────────
 
@@ -555,7 +556,7 @@ export function setupHistoryContextMenu(): void {
 		closeMenu();
 
 		const href = link.getAttribute("href") || "";
-		const sessionId = href.match(/\/c\/([^/?#]+)/)?.[1] || "";
+		const sessionId = sessionIdFromHref(href);
 		const meta = foldersState.sessions.get(sessionId);
 		const currentFolderId = meta?.folderId || INBOX_ID;
 

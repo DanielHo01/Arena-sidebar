@@ -56,6 +56,7 @@ import {
 	refreshCurrentHighlight,
 } from "./ui/panel";
 import { setupHistoryTitleEditing } from "./historyTitles";
+import { getSessionId, isSessionRoute, routeKey } from "./platform/route";
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close
@@ -136,29 +137,19 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 let lastRouteKey = "";
 let isFirstRender = true; // Sprint 3.1: skip debounce on first render
 
-function getRouteKey(): string {
-	const m = location.pathname.match(/^\/c\/([^/?#]+)/);
-	if (m) return "c:" + m[1];
-	return location.pathname + location.search;
-}
-
-function isCharacterChatRoute(): boolean {
-	return /^\/c\//.test(location.pathname);
-}
-
 function resetSessionState(): void {
 	resetExtractState();
 	cachedElements.clear();
 	conversationStore.reset();
 	panel.currentRoundIdx = 0;
 	panel.highlightInitialized = false;
-	panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open
-	lastRouteKey = getRouteKey();
+	panel.isOpen = isSessionRoute(location.pathname); // Sprint 3.1: /c/ defaults to open
+	lastRouteKey = routeKey(location.pathname, location.search);
 }
 
 async function rebuildForCurrentRoute(): Promise<void> {
 	// Sprint 5/7: restore from storage before rebuilding from DOM
-	const sessionId = location.pathname.match(/^\/c\/([^/?#]+)/)?.[1] ?? "";
+	const sessionId = getSessionId(location.pathname);
 	if (sessionId) {
 		conversationStore.sessionId = sessionId;
 		await conversationStore.loadFromStorage(sessionId);
@@ -189,7 +180,7 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 		timers.debounce = setTimeout(() => {
 			if (!panel.isDragging && !preScrollActive) {
 				// Sprint 3.2: detect route change and rebuild store
-				const nextKey = getRouteKey();
+				const nextKey = routeKey(location.pathname, location.search);
 				if (nextKey !== lastRouteKey) {
 					resetSessionState();
 					rebuildForCurrentRoute();
@@ -483,7 +474,7 @@ function refreshUI() {
 		host.setAttribute("data-ai-sidebar-open", panel.isOpen ? "1" : "0");
 		host.setAttribute(
 			"data-ai-sidebar-mode",
-			isCharacterChatRoute() ? "character" : "direct",
+			isSessionRoute(location.pathname) ? "character" : "direct",
 		);
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
@@ -575,8 +566,8 @@ try {
 			return;
 		}
 		bootstrapDone = true;
-		lastRouteKey = getRouteKey(); // init route key on first load
-		panel.isOpen = isCharacterChatRoute(); // Sprint 3.1: /c/ defaults to open panel
+		lastRouteKey = routeKey(location.pathname, location.search); // init route key on first load
+		panel.isOpen = isSessionRoute(location.pathname); // Sprint 3.1: /c/ defaults to open panel
 		initFolders()
 			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
 			.catch(() => {}); // fire-and-forget

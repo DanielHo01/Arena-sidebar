@@ -11,6 +11,7 @@ import { panel } from "../state";
 import { conversationStore } from "../conversationStore";
 import { UI_STYLES, ICON_X_SVG } from "./styles";
 import { exportConversation, summarizeRounds } from "./modals";
+import { isSessionRoute } from "../platform/route";
 
 // ─── Scroll highlight ──────────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ function createRoundEl(
 	item.appendChild(title);
 	item.appendChild(assistantPreview);
 
-	const isCharacterChat = /^\/c\//.test(location.pathname);
+	const isCharacterChat = isSessionRoute(location.pathname);
 	item.onclick = () => {
 		scrollToRound(round.id);
 		panel.currentRoundIdx = idx;
@@ -307,7 +308,7 @@ export function ensurePanelSkeleton(
 	headerActions.appendChild(orderBtn);
 
 	// Sprint 3.1: Scan button — auto-scroll up to trigger Arena loading older messages
-	const isCharacterChat = /^\/c\//.test(location.pathname);
+	const isCharacterChat = isSessionRoute(location.pathname);
 	if (isCharacterChat) {
 		let scanning = false;
 		const scanBtn = makeHeaderBtn("⤒", "Scan older loaded history", () => {
