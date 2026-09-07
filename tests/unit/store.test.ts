@@ -12,8 +12,8 @@ import {
 	refreshStore,
 	addCapturedMessage,
 	bindDomAnchors,
-	getMessagesForRound,
 } from "../../src/conversationStore";
+import { getMessagesForRound } from "../../src/features/roundNav";
 import { cachedElements } from "../../src/state";
 
 // The store is a module-level singleton, so every test starts from empty.

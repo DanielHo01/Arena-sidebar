@@ -57,44 +57,33 @@ function peekScrollContainer(): HTMLElement | null {
 	return null;
 }
 
-export function startPreScroll(onDone: () => void) {
-	if (preScrollDone) {
-		onDone();
-		return;
-	}
-	const container = findScrollContainer();
-	if (!container) {
-		// Arena's React renders the scroll container after the body exists, so
-		// retry briefly (using the cheap peek) instead of giving up — a skipped
-		// preScroll leaves long conversations partially extracted.
-		console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
-		let retries = 0;
-		const retry = setInterval(() => {
-			const c = peekScrollContainer();
-			if (c || ++retries > 10) {
-				clearInterval(retry);
-				if (c) {
-					startPreScroll(onDone);
-				} else {
-					console.log(
-						"[AI Sidebar] preScroll: gave up, no container after retries",
-					);
-					preScrollDone = true;
-					onDone();
-				}
-			}
-		}, 200);
-		return;
-	}
-	// preScroll exists because Arena virtualizes (renders only ~8 messages) and we
-	// need the full list extracted. If the container isn't virtualized (fits on
-	// screen), skip entirely — no scroll, no extract, no signature burn.
-	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
-		preScrollDone = true;
-		onDone();
-		return;
-	}
+/** Poll briefly for Arena's scroll container, which React mounts late. */
+function retryUntilContainer(onDone: () => void): void {
+	console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
+	let retries = 0;
+	const retry = setInterval(() => {
+		const c = peekScrollContainer();
+		if (!c && ++retries <= 10) return;
+		clearInterval(retry);
+		if (!c) {
+			console.log(
+				"[AI Sidebar] preScroll: gave up, no container after retries",
+			);
+			preScrollDone = true;
+			onDone();
+			return;
+		}
+		startPreScroll(onDone);
+	}, 200);
+}
+
+/**
+ * Scroll in steps until Arena stops rendering new messages, then scroll back up.
+ *
+ * Stopping on stability rather than at the bottom matters: forcing the whole
+ * conversation to render janks long chats.
+ */
+function scrollUntilStable(container: Element, onDone: () => void): void {
 	const step = Math.max(container.clientHeight * 2, 1500);
 	console.log(
 		"[AI Sidebar] preScroll: totalH=",
@@ -103,9 +92,6 @@ export function startPreScroll(onDone: () => void) {
 		step,
 	);
 	preScrollActive = true;
-	// Stop once the rendered message count stops growing (Arena lazy-loads more
-	// while scrolling) — don't force-scroll the whole conversation to the bottom,
-	// which on long chats makes Arena render every message and janks the page.
 	let lastMsgCount = countRenderedMessages();
 	let stableTicks = 0;
 	const STABLE_LIMIT = 3;
@@ -125,18 +111,42 @@ export function startPreScroll(onDone: () => void) {
 		} else {
 			stableTicks++;
 		}
-		if (stableTicks >= STABLE_LIMIT) {
-			clearInterval(preScrollInterval);
-			preScrollInterval = null;
-			preScrollActive = false;
-			console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
-			setTimeout(() => {
-				container.scrollTop = 0;
-				preScrollDone = true;
-				onDone();
-			}, 600);
-		}
+		if (stableTicks < STABLE_LIMIT) return;
+		clearInterval(preScrollInterval);
+		preScrollInterval = null;
+		preScrollActive = false;
+		console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
+		setTimeout(() => {
+			container.scrollTop = 0;
+			preScrollDone = true;
+			onDone();
+		}, 600);
 	}, 120);
+}
+
+export function startPreScroll(onDone: () => void) {
+	if (preScrollDone) {
+		onDone();
+		return;
+	}
+	const container = findScrollContainer();
+	if (!container) {
+		// Arena's React renders the scroll container after the body exists, so
+		// retry briefly (using the cheap peek) instead of giving up — a skipped
+		// preScroll leaves long conversations partially extracted.
+		retryUntilContainer(onDone);
+		return;
+	}
+	// preScroll exists because Arena virtualizes (renders only ~8 messages) and we
+	// need the full list extracted. If the container isn't virtualized (fits on
+	// screen), skip entirely — no scroll, no extract, no signature burn.
+	if (container.scrollHeight <= container.clientHeight * 2) {
+		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
+		preScrollDone = true;
+		onDone();
+		return;
+	}
+	scrollUntilStable(container, onDone);
 }
 
 // Count rendered message elements cheaply (querySelectorAll, no reflow).

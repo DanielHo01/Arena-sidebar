@@ -17,6 +17,7 @@ import {
 import { chatRounds, lookupModelName } from "../capture";
 import { capture } from "../state";
 import { getSessionId } from "../platform/route";
+import { h } from "./dom";
 
 /** Assemble the pure serialize inputs from the live singletons. */
 function serializeInput(sessionId: string): SerializeInput {
@@ -123,102 +124,96 @@ export function showExportModal(
 
 // ─── Summary modal ──────────────────────────────────────────────────────────────────────
 
-export function showSummaryModal(shadowRoot: ShadowRoot, promptText: string) {
-	let modal = shadowRoot.querySelector(".summary-modal") as HTMLElement | null;
-	if (modal) modal.remove();
-	modal = document.createElement("div");
-	modal.className = "summary-modal";
-	const box = document.createElement("div");
-	box.className = "summary-box";
-	const title = document.createElement("div");
-	title.className = "summary-title";
-	const roundCount = (promptText.match(/=== Round \d+ ===/g) || []).length;
-	title.textContent =
-		"✨ Summary prompt — " +
-		roundCount +
-		" rounds · " +
-		promptText.length +
-		" chars";
-	const actions = document.createElement("div");
-	actions.className = "summary-actions";
+/** Put the prompt into Arena's own composer by driving its controlled input. */
+function pasteIntoChat(promptText: string): void {
+	const ta = document.querySelector(
+		'textarea[name="message"], textarea[placeholder*="followup" i], textarea[placeholder*="Ask" i]',
+	) as HTMLTextAreaElement | null;
+	if (!ta) return;
+	ta.focus();
+	// React tracks value through its own setter, so assign via the prototype
+	// setter and fire `input` — a plain `.value =` would be ignored.
+	const setter = Object.getOwnPropertyDescriptor(
+		window.HTMLTextAreaElement.prototype,
+		"value",
+	)!.set!;
+	setter.call(ta, promptText);
+	ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
 
-	const makeBtn = (label: string, className: string, onclick: () => void) => {
-		const btn = document.createElement("button");
-		btn.textContent = label;
-		if (className) btn.className = className;
-		btn.onclick = onclick;
-		return btn;
-	};
+/**
+ * Open the prompt in a fresh arena.ai chat.
+ *
+ * Domain is hardcoded and the prompt is encodeURIComponent-wrapped, so no
+ * injection is possible; the origin is re-checked through the URL constructor.
+ */
+function openInNewChat(promptText: string): void {
+	const raw =
+		"https://arena.ai/?mode=direct&prompt=" +
+		encodeURIComponent(promptText.slice(0, 4000));
+	try {
+		const u = new URL(raw);
+		if (u.origin === "https://arena.ai") {
+			// pi-lens-ignore: ast-grep:no-open-redirect
+			window.open(u.href, "_blank");
+		}
+	} catch {
+		/* malformed URL — silently ignore */
+	}
+}
 
-	actions.appendChild(
-		makeBtn("📋 Copy to clipboard", "", () =>
-			navigator.clipboard.writeText(promptText).then(() => {}),
+/** The four ways to get the prompt out of the extension, plus Close. */
+function buildSummaryActions(promptText: string, onClose: () => void) {
+	const btn = (label: string, cls: string, onClick: () => void) =>
+		h(
+			"button",
+			cls ? { class: cls, text: label, onClick } : { text: label, onClick },
+		);
+	return h("div", { class: "summary-actions" }, [
+		btn("📋 Copy to clipboard", "", () => {
+			void navigator.clipboard.writeText(promptText).catch(() => {});
+		}),
+		btn("📥 Paste into current chat", "", () => pasteIntoChat(promptText)),
+		btn("🚀 Open new arena.ai chat", "primary", () =>
+			openInNewChat(promptText),
 		),
-	);
-
-	actions.appendChild(
-		makeBtn("📥 Paste into current chat", "", () => {
-			const ta = document.querySelector(
-				'textarea[name="message"], textarea[placeholder*="followup" i], textarea[placeholder*="Ask" i]',
-			) as HTMLTextAreaElement | null;
-			if (ta) {
-				ta.focus();
-				const setter = Object.getOwnPropertyDescriptor(
-					window.HTMLTextAreaElement.prototype,
-					"value",
-				)!.set!;
-				setter.call(ta, promptText);
-				ta.dispatchEvent(new Event("input", { bubbles: true }));
-			}
-		}),
-	);
-
-	// New tab: domain is hardcoded; prompt is encodeURIComponent-wrapped — no injection possible.
-	// Origin validated via URL() constructor.
-	actions.appendChild(
-		makeBtn("🚀 Open new arena.ai chat", "primary", () => {
-			const raw =
-				"https://arena.ai/?mode=direct&prompt=" +
-				encodeURIComponent(promptText.slice(0, 4000));
-			try {
-				const u = new URL(raw);
-				if (u.origin === "https://arena.ai") {
-					// pi-lens-ignore: ast-grep:no-open-redirect
-					window.open(u.href, "_blank");
-				}
-			} catch {
-				/* malformed URL — silently ignore */
-			}
-		}),
-	);
-
-	actions.appendChild(
-		makeBtn("💾 Download as .md", "", () =>
+		btn("💾 Download as .md", "", () =>
 			downloadBlob(
 				"arena-summary-prompt.md",
 				"text/markdown;charset=utf-8",
 				promptText,
 			),
 		),
+		h("button", { text: "✕ Close", onClick: onClose }),
+	]);
+}
+
+export function showSummaryModal(shadowRoot: ShadowRoot, promptText: string) {
+	shadowRoot.querySelector(".summary-modal")?.remove();
+
+	const roundCount = (promptText.match(/=== Round \d+ ===/g) || []).length;
+	const modal = h("div", { class: "summary-modal" });
+	const ta = h("textarea", {
+		class: "summary-text",
+		readOnly: true,
+		value: promptText,
+	});
+	modal.appendChild(
+		h("div", { class: "summary-box" }, [
+			h("div", {
+				class: "summary-title",
+				text:
+					"✨ Summary prompt — " +
+					roundCount +
+					" rounds · " +
+					promptText.length +
+					" chars",
+			}),
+			buildSummaryActions(promptText, () => modal.remove()),
+			ta,
+		]),
 	);
-
-	const closeBtn = document.createElement("button");
-	closeBtn.textContent = "✕ Close";
-	closeBtn.onclick = () => {
-		modal!.remove();
-	};
-	actions.appendChild(closeBtn);
-
-	const ta = document.createElement("textarea");
-	ta.className = "summary-text";
-	ta.readOnly = true;
-	ta.value = promptText;
-	ta.scrollTop = 0;
-
-	box.appendChild(title);
-	box.appendChild(actions);
-	box.appendChild(ta);
-	modal.appendChild(box);
+	// Clicking the backdrop (but not the box) dismisses.
 	modal.onclick = (e) => {
 		if (e.target === modal) modal.remove();
 	};

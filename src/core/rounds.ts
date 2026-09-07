@@ -10,6 +10,25 @@
 
 import type { SidebarMessage, SidebarRound } from "../types";
 
+/**
+ * A round opened by an assistant message that precedes any user message.
+ *
+ * It has no user turn, so it doubles as its own preview: the assistant text is
+ * shown as the assistant preview and the round carries a single message.
+ */
+function makeLeadRound(lead: SidebarMessage, index: number): SidebarRound {
+	return {
+		id: lead.id,
+		title: lead.content.slice(0, 80) || "(开场助手消息)",
+		messageCount: 1,
+		index,
+		hasAnchor: !!lead.domId,
+		userPreview: undefined,
+		assistantPreview: lead.content.slice(0, 100),
+		assistantCount: 1,
+	};
+}
+
 export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 	const rounds: SidebarRound[] = [];
 	let current: SidebarRound | null = null;
@@ -45,18 +64,7 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 				roundIdx++;
 			} else if (pendingLead) {
 				// Lead assistant round — no user, use assistant as preview
-				const leadRound: SidebarRound = {
-					id: pendingLead.id,
-					title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-					messageCount: 1,
-					index: roundIdx,
-					hasAnchor: !!pendingLead.domId,
-					// Sprint 8: lead assistant shows as both user and assistant preview
-					userPreview: undefined,
-					assistantPreview: pendingLead.content.slice(0, 100),
-					assistantCount: 1,
-				};
-				pushRound(leadRound);
+				pushRound(makeLeadRound(pendingLead, roundIdx));
 				roundIdx++;
 			}
 			// Start new round with user
@@ -89,17 +97,7 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 		roundIdx++;
 	} else if (pendingLead && rounds.length === 0) {
 		// Lead assistant only — no rounds at all
-		const leadRound: SidebarRound = {
-			id: pendingLead.id,
-			title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-			messageCount: 1,
-			index: 0,
-			hasAnchor: !!pendingLead.domId,
-			userPreview: undefined,
-			assistantPreview: pendingLead.content.slice(0, 100),
-			assistantCount: 1,
-		};
-		pushRound(leadRound);
+		pushRound(makeLeadRound(pendingLead, 0));
 	}
 
 	return rounds;

@@ -20,7 +20,7 @@
 // session state anywhere else is the bug pattern this phase removed.
 
 import type { Disposer } from "../types";
-import { resetCaptureState } from "../capture";
+import { resetCaptureState, resetRscState } from "../capture";
 import { cachedElements, panel } from "../state";
 import { conversationStore } from "../conversationStore";
 import { resetExtractState } from "../extract";
@@ -46,6 +46,7 @@ export function resetSessionState(sessionId: string): void {
 	resetExtractState();
 	resetPreScroll();
 	resetCaptureState();
+	resetRscState();
 	resetTitleCache();
 	resetLibrarySection();
 
