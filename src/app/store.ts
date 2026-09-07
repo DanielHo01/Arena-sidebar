@@ -26,7 +26,6 @@ import { conversationStore } from "../conversationStore";
 import { resetExtractState } from "../extract";
 import { resetPreScroll } from "../features/prescroll";
 import { resetLibrarySection } from "../ui/arenaSidebar";
-import { resetTitleCache } from "../historyTitles";
 import { resetHiddenRounds } from "../rounds";
 
 /**
@@ -48,7 +47,6 @@ export function resetSessionState(sessionId: string): void {
 	resetPreScroll();
 	resetCaptureState();
 	resetRscState();
-	resetTitleCache();
 	resetLibrarySection();
 	resetHiddenRounds();
 

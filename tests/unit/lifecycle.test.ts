@@ -22,7 +22,10 @@ import {
 } from "../../src/app/store";
 import { conversationStore } from "../../src/conversationStore";
 import { chatRounds } from "../../src/capture";
-import { foldersState } from "../../src/features/sessions";
+import {
+	foldersState,
+	setSessionCustomTitle,
+} from "../../src/features/sessions";
 import { hiddenRoundIds } from "../../src/rounds";
 import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
 import { toggleArenaSessionLibrarySection } from "../../src/ui/arenaSidebar";
@@ -224,10 +227,17 @@ describe("route changes do not leak DOM listeners", () => {
 	});
 });
 
-describe("resetSessionState covers the two remaining residual states", () => {
-	// Both of these are module-private, so they are asserted behaviourally.
-	// Removing resetTitleCache() or resetLibrarySection() from
-	// resetSessionState must fail a test -- that was verified by deleting them.
+describe("resetSessionState clears the remaining residual states", () => {
+	// These are module-private, so they are asserted behaviourally. Removing
+	// resetLibrarySection() from resetSessionState must fail a test here, and
+	// removing resetHiddenRounds() must fail the one in the block above -- both
+	// were verified by deleting them.
+	//
+	// The title assertions in this block no longer pin a reset: historyTitles.ts
+	// used to cache titles in a module-level Map, and resetTitleCache() was needed
+	// to stop a route change from serving the previous session's titles. That cache
+	// is gone (it caused a context-menu rename to be reverted), so restoreTitle()
+	// now reads foldersState directly and there is nothing left to clear.
 
 	const LIBRARY_ATTR = "data-ai-sidebar-arena-library-section";
 
@@ -241,7 +251,7 @@ describe("resetSessionState covers the two remaining residual states", () => {
 		};
 	}
 
-	it("a route change drops the stale title cache and re-reads foldersState", () => {
+	it("a route change re-reads the title from foldersState", () => {
 		foldersState.sessions.set("aaa", meta("Old Title"));
 		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
 		setupHistoryTitleEditing();
@@ -255,6 +265,41 @@ describe("resetSessionState covers the two remaining residual states", () => {
 
 		expect(document.querySelector("a")!.textContent).toContain("New Title");
 		expect(document.querySelector("a")!.textContent).not.toContain("Old Title");
+	});
+
+	it("a context-menu rename survives the next title restore", () => {
+		// Regression: the context-menu rename wrote foldersState and the link's DOM
+		// but not titleCache, while restoreTitle() trusted the cache first. Since
+		// loop.ts re-runs setupHistoryTitleEditing() on every debounced DOM change,
+		// the stale cache silently reverted the rename a few hundred ms later --
+		// the user typed a new name, saw it take, then watched it flip back.
+		//
+		// The double-click path in historyTitles.ts did not have this bug because it
+		// called cacheTitle() after saving. That divergence is the tell: two write
+		// paths for one operation, only one of which knew about the cache.
+		foldersState.sessions.set("aaa", meta("Old Title"));
+		// Hermetic start: the previous test in this file leaves titleCache populated,
+		// and beforeEach does not clear it. Without this the test would fail on its
+		// first assertion for an unrelated reason (a leaked cache entry) rather than
+		// exercising the rename path it is meant to pin.
+		resetSessionState("aaa");
+		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
+		setupHistoryTitleEditing();
+		const link = document.querySelector("a")!;
+		expect(link.textContent).toContain("Old Title");
+
+		// Exactly what contextMenu.ts's rename item does on commit.
+		setSessionCustomTitle("aaa", "New Title");
+		link.title = "New Title";
+		const span = link.querySelector("span");
+		if (span) span.textContent = "New Title";
+		expect(link.textContent).toContain("New Title");
+
+		// loop.ts:97 re-runs this on every debounced mutation.
+		setupHistoryTitleEditing();
+
+		expect(link.textContent).toContain("New Title");
+		expect(link.textContent).not.toContain("Old Title");
 	});
 
 	it("a route change closes the Session Library section", () => {

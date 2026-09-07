@@ -4,11 +4,7 @@
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
 
-import {
-	getSessionMeta,
-	setSessionCustomTitle,
-	foldersState,
-} from "./features/sessions";
+import { getSessionMeta, setSessionCustomTitle } from "./features/sessions";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
 import { queryHistoryLinks } from "./platform/arenaDom";
@@ -19,44 +15,22 @@ import type { Disposer } from "./types";
 // Migration: see migrateHistoryTitles() in folders.ts (H5). Writes now go to
 // foldersState.sessions via setSessionCustomTitle; reads go to the same index.
 
-// ─── Title cache ─────────────────────────────────────────────────────────────────────
-// In-memory cache so that restoreTitle() does not O(N) scan foldersState on every
-// DOM mutation. cacheTitle() is called on every successful save; restoreTitle()
-// reads the cache first (O(1)) before falling back to foldersState.
-
-const titleCache = new Map<string, string>();
-let cacheLoaded = false;
-
-/**
- * Clear the title cache on a route change.
- *
- * Residual state: `cacheLoaded` latched true on the first load, so after a
- * session switch `restoreTitle()` kept serving the previous session's cached
- * titles and never re-read from foldersState.
- */
-export function resetTitleCache(): void {
-	titleCache.clear();
-	cacheLoaded = false;
-}
-
-function cacheTitle(sid: string, title: string): void {
-	titleCache.set(sid, title);
-}
-
-// Load every historyTitle_* key into the cache in ONE storage call. After this the
-// restore path is pure in-memory — no per-link storage read on every
-// DOM change (Arena's sidebar can hold dozens of /c/ links, and the observer fires
-// on every mutation, so per-link get previously caused a storage-call storm).
-function loadTitleCache(): void {
-	if (cacheLoaded) return;
-	cacheLoaded = true;
-	// Populate from the in-memory foldersState index. Safe to call after initFolders().
-	// If initFolders() has not yet completed, this will be a no-op and restoreTitle()
-	// will pick up the session on its next call (e.g. after the observer fires again).
-	for (const meta of foldersState.sessions.values()) {
-		titleCache.set(meta.sessionId, resolveSessionTitle(meta));
-	}
-}
+// ─── No title cache ──────────────────────────────────────────────────────────────────
+// This module used to keep a `titleCache` Map in front of foldersState, on the
+// stated grounds that restoreTitle() would otherwise O(N) scan foldersState on
+// every DOM mutation. That premise was false: getSessionMeta() is a single
+// Map.get, so the cache saved one lookup and a few trim() calls per link.
+//
+// What it cost was a whole class of staleness bug. The cache was only written by
+// the double-click save path; the context-menu rename wrote foldersState and the
+// link's DOM but not the cache, and restoreTitle() trusted the cache first. Since
+// app/loop.ts re-runs setupHistoryTitleEditing() on every debounced mutation, the
+// stale entry reverted a context-menu rename a few hundred ms after the user made
+// it. Reading foldersState directly makes that unrepresentable: there is exactly
+// one title store, so there is nothing to fall out of sync.
+//
+// Removing it also removed resetTitleCache() from the session-reset list in
+// app/store.ts — one fewer residual state to remember to clear.
 
 // ─── Apply custom title to an anchor element ─────────────────────────────────────────
 // Only rewrites text, never replaces element structure: overwriting anchor.textContent
@@ -104,21 +78,11 @@ function applyCustomTitle(anchor: Element, customTitle: string) {
 // errors per call, so a single failure cannot disable every restore and save.
 
 function restoreTitle(item: HTMLElement, sid: string): void {
-	const cached = titleCache.get(sid);
-	if (cached !== undefined) {
-		if (item.textContent && item.textContent.trim() !== cached) {
-			applyCustomTitle(item, cached);
-		}
-		return;
-	}
-	// cache miss — resolve from the in-memory foldersState index.
 	const meta = getSessionMeta(sid);
-	if (meta) {
-		const title = resolveSessionTitle(meta);
-		if (item.textContent && item.textContent.trim() !== title) {
-			applyCustomTitle(item, title);
-		}
-		titleCache.set(sid, title);
+	if (!meta) return;
+	const title = resolveSessionTitle(meta);
+	if (item.textContent && item.textContent.trim() !== title) {
+		applyCustomTitle(item, title);
 	}
 }
 
@@ -133,7 +97,6 @@ function restoreAllTitles(): void {
 // ─── Main setup ─────────────────────────────────────────────────────────────────────
 
 export function setupHistoryTitleEditing(): Disposer {
-	loadTitleCache();
 	restoreAllTitles();
 	// Kept so the disposer can genuinely removeEventListener, rather than only
 	// clearing the bound flag and leaking the handler on Arena's own element.
@@ -170,7 +133,6 @@ export function setupHistoryTitleEditing(): Disposer {
 				saved = true;
 				const newText = (input.value || "").trim() || oldText;
 				setSessionCustomTitle(sid, newText);
-				cacheTitle(sid, newText);
 				target.textContent = newText;
 			};
 			const cancel = () => {
