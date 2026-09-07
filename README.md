@@ -15,7 +15,7 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ Role-aware preview（用户问 / AI 答双行预览）
 - ✅ 点击跳转 + 滚动高亮（当前 round 自动跟随）
 - ✅ 正序/倒序切换
-- ✅ 实时搜索过滤
+- ✅ 实时搜索过滤（标题 / 双预览 / 任意消息全文）
 - ✅ **隐藏轮次** — ✕ 隐藏 / ↩ 恢复，按会话持久化（`hidden-rounds:{sessionId}`），跨标签页同步
 - ✅ 实时检测新消息（MutationObserver + 轮询）
 
@@ -124,7 +124,7 @@ D:\edge-ai-sidebar\
 │
 ├── tests/
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
-│   └── unit/                   36 个测试文件，535 个用例
+│   └── unit/                   36 个测试文件，540 个用例
 │
 ├── scripts/
 │   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
@@ -247,7 +247,7 @@ npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
 
 **当前状态**：
 
-- ✅ 36 个测试文件，535 个用例全部通过
+- ✅ 36 个测试文件，540 个用例全部通过
 - ✅ 整体覆盖率 94% 语句 / 85.2% 分支 / 95.5% 函数
 - ✅ 按目录棘轮阈值全部通过：全局（42/42/45/42）、`src/core/**`（99/90/100/100）、`src/platform/**`（90/86/81/92）
 - ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算（70 KB / gzip 25 KB）
@@ -321,11 +321,11 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 
 ## 后续 Roadmap
 
-- [ ] 适配 chatgpt.com / claude.ai 等其他 AI 聊天网站
-- [ ] 浮动按钮位置自定义（拖动） — ✅ 已实现
-- [ ] 消息搜索（fuzzy + 全文）
-- [ ] 跨标签页同步（多 arena tab 切换）
-- [ ] 浮动按钮快捷键
+- [ ] 适配 chatgpt.com / claude.ai 等其他 AI 聊天网站（`platform/arenaDom.ts` 是预留的扩展点）
+- [x] 浮动按钮位置自定义（拖动 + 位置持久化）
+- [x] 消息搜索（标题 / 双预览 / 全文正文；fuzzy 暂未做）
+- [x] 跨标签页同步（文件夹、会话索引、隐藏轮次；面板开合为各标签独立）
+- [x] 浮动按钮快捷键（Alt+S 开关面板）
 - [ ] 深色模式适配
 
 ---

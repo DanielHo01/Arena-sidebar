@@ -9,6 +9,17 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// getMessagesForRound reads the live conversation store; for the full-text
+// filter tests it must be steerable per round. scrollToRound is along for the
+// ride (roundItem imports the same module) and no test here scrolls.
+const roundNavMocks = vi.hoisted(() => ({
+	getMessagesForRound: vi.fn((_roundId: string) => [] as { content: string }[]),
+}));
+vi.mock("../../src/features/roundNav", () => ({
+	scrollToRound: vi.fn(),
+	getMessagesForRound: roundNavMocks.getMessagesForRound,
+}));
+
 import { reconcileList } from "../../src/ui/panel/list";
 import { hiddenRoundIds } from "../../src/rounds";
 import { panel } from "../../src/state";
@@ -52,6 +63,7 @@ describe("reconcileList", () => {
 		panel.showHiddenRounds = false;
 		hiddenRoundIds.clear();
 		refreshUI.mockClear();
+		roundNavMocks.getMessagesForRound.mockReset().mockReturnValue([]);
 	});
 
 	it("renders one row per round, in order", () => {
@@ -361,6 +373,60 @@ describe("reconcileList", () => {
 			reconcileList(list, [round("a"), round("b")], refreshUI);
 
 			expect(rowIds(list)).toEqual(["b"]);
+		});
+	});
+
+	describe("full-text search", () => {
+		it("matches a round whose message content contains the query but previews do not", () => {
+			// The previews are truncated at 60/100 chars; a word buried deeper in
+			// the message used to be unfindable. This is the whole point of the
+			// content pass.
+			roundNavMocks.getMessagesForRound.mockImplementation((id: string) =>
+				id === "a"
+					? [{ content: "a long answer that mentions xylophone near the end" }]
+					: [],
+			);
+			panel.searchQuery = "xylophone";
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+		});
+
+		it("matches content case-insensitively", () => {
+			roundNavMocks.getMessagesForRound.mockReturnValue([
+				{ content: "Deep dive into XYLOPHONE lore" },
+			]);
+			panel.searchQuery = "xylophone";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+		});
+
+		it("skips the content scan when the title already matches", () => {
+			// The || chain short-circuits: content is only read for rounds the
+			// cheap checks rejected. Pin it — per keystroke, that is the
+			// difference between a filter and a scan over every message.
+			panel.searchQuery = "question a";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+			expect(roundNavMocks.getMessagesForRound).not.toHaveBeenCalled();
+		});
+
+		it("shows the no-match placeholder when neither previews nor content match", () => {
+			roundNavMocks.getMessagesForRound.mockReturnValue([
+				{ content: "completely unrelated text" },
+			]);
+			panel.searchQuery = "zzz";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(list.querySelector(".empty")?.textContent).toBe(
+				'No matches for "zzz"',
+			);
 		});
 	});
 });

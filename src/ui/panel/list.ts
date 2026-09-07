@@ -3,6 +3,7 @@
 import type { SidebarRound } from "../../types";
 import { hiddenRoundIds } from "../../rounds";
 import { panel } from "../../state";
+import { getMessagesForRound } from "../../features/roundNav";
 import { createRoundEl, updateRoundEl } from "./roundItem";
 
 // ─── List reconciliation ─────────────────────────────────────────────────────────────
@@ -28,7 +29,14 @@ export function reconcileList(
 				!q ||
 				r.title.toLowerCase().includes(q) ||
 				r.userPreview?.toLowerCase().includes(q) ||
-				r.assistantPreview?.toLowerCase().includes(q),
+				r.assistantPreview?.toLowerCase().includes(q) ||
+				// Full-text: the previews are truncated (60/100 chars), so a word
+				// buried deeper in a message was unfindable. The || chain
+				// short-circuits — content is only scanned for rounds the cheap
+				// checks already rejected.
+				getMessagesForRound(r.id).some((m) =>
+					m.content.toLowerCase().includes(q),
+				),
 		);
 
 	if (filtered.length === 0) {
