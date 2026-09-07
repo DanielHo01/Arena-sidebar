@@ -37,12 +37,14 @@ import { pollCaptures, setupRscCapture } from "./capture";
 import {
 	initFolders,
 	migrateHistoryTitles,
-	ensureArenaFolderEntry,
-	setupHistoryContextMenu,
-	toggleArenaSessionLibrarySection,
-	setupFoldersStorageSync,
 	setupSessionMetaSync,
-} from "./folders";
+} from "./features/sessions";
+import {
+	ensureArenaFolderEntry,
+	setupFoldersStorageSync,
+	toggleArenaSessionLibrarySection,
+} from "./ui/arenaSidebar";
+import { setupHistoryContextMenu } from "./ui/contextMenu";
 import { buildFab } from "./ui/fab";
 import {
 	ensurePanelSkeleton,

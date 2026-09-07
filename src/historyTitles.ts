@@ -4,7 +4,11 @@
 // Public exports:
 //   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
 
-import { getSessionMeta, setSessionCustomTitle, foldersState } from "./folders";
+import {
+	getSessionMeta,
+	setSessionCustomTitle,
+	foldersState,
+} from "./features/sessions";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
 import { queryHistoryLinks } from "./platform/arenaDom";

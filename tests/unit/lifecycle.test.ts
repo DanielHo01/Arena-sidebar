@@ -21,11 +21,9 @@ import {
 } from "../../src/app/store";
 import { conversationStore } from "../../src/conversationStore";
 import { chatRounds } from "../../src/capture";
-import {
-	foldersState,
-	setupHistoryContextMenu,
-	toggleArenaSessionLibrarySection,
-} from "../../src/folders";
+import { foldersState } from "../../src/features/sessions";
+import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
+import { toggleArenaSessionLibrarySection } from "../../src/ui/arenaSidebar";
 import { setupHistoryTitleEditing } from "../../src/historyTitles";
 import { fab, panel, cachedElements } from "../../src/state";
 

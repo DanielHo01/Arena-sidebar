@@ -25,7 +25,7 @@ import { cachedElements, panel } from "../state";
 import { conversationStore } from "../conversationStore";
 import { resetExtractState } from "../extract";
 import { resetPreScroll } from "../features/prescroll";
-import { resetLibrarySection } from "../folders";
+import { resetLibrarySection } from "../ui/arenaSidebar";
 import { resetTitleCache } from "../historyTitles";
 
 /**

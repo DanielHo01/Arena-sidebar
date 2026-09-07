@@ -6,7 +6,7 @@
 // 3/3/3. Because every observer re-runs a full-body querySelectorAll on each
 // mutation, the cost compounds with session count.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupHistoryContextMenu } from "../../src/folders";
+import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
 
 let addSpy: ReturnType<typeof vi.spyOn>;
 // Plain counters rather than vi.fn(): the inferred Mock type is not callable,
