@@ -1,14 +1,17 @@
 // ui/contextMenu.ts — the right-click menu on Arena's native history links:
-// rename, move to folder, archive.
+// rename, move to folder.
 //
 // Setup is idempotent by construction: the module keeps the live Disposer and a
 // repeat call returns it instead of stacking a second set of document listeners.
 // Phase 1 fixed a leak here (three route changes produced three click handlers,
 // three keydown handlers and three whole-body MutationObservers); the lifecycle
 // test in tests/unit/lifecycle.test.ts now pins that down.
+//
+// Phase 5 broke the 222-line setup function into the pieces below and moved its
+// 58-line stylesheet to ui/styles/contextMenu.ts. Each builder returns an
+// element; setupHistoryContextMenu only wires them together.
 
-import type { Disposer } from "../types";
-import { CONTEXT_MENU_CSS } from "./styles";
+import type { Disposer, SessionMeta } from "../types";
 import { queryHistoryLinks } from "../platform/arenaDom";
 import { sessionIdFromHref } from "../platform/route";
 import { resolveSessionTitle } from "../titleResolver";
@@ -18,143 +21,173 @@ import {
 	INBOX_ID,
 	setSessionCustomTitle,
 } from "../features/sessions";
-
-// ─── Arena History Context Menu ───────────────────────────────────────────────────────────────
+import { CONTEXT_MENU_CSS } from "./styles";
+import { h } from "./dom";
 
 /** Holds the live registration so repeat calls are no-ops. See the disposer. */
 let contextMenuDisposer: Disposer | null = null;
 
-/**
- * Inject a right-click context menu on Arena's native history links (a[href*="/c/"]).
- * Shows "✏️ Rename" and "📁 Move to folder ▶" with a folder sub-menu.
- * Click-outside and Escape close the menu.
- * MutationObserver rebinds new links added by Arena SPA navigation.
- *
- * Idempotent: content.ts calls this on bootstrap AND on every SPA route change.
- * Before the guard below, each call added another document-level click listener,
- * another keydown listener and another body-wide MutationObserver — so the
- * full-body querySelectorAll inside bindLinks ran once per visited session on
- * every DOM mutation. Re-calling returns the existing disposer.
- */
-export function setupHistoryContextMenu(): Disposer {
-	if (contextMenuDisposer) return contextMenuDisposer;
+/** The menu currently on screen, if any. There is only ever one. */
+let activeMenu: HTMLElement | null = null;
 
-	const styleId = "ai-sidebar-ctx-style";
-	if (!document.getElementById(styleId)) {
-		const s = document.createElement("style");
-		s.id = styleId;
-		s.textContent = CONTEXT_MENU_CSS;
-		document.head.appendChild(s);
-	}
+const STYLE_ID = "ai-sidebar-ctx-style";
+const EDGE_MARGIN = 8;
 
-	let activeMenu: HTMLElement | null = null;
+function ensureStyles(): void {
+	if (document.getElementById(STYLE_ID)) return;
+	document.head.appendChild(
+		h("style", { id: STYLE_ID, text: CONTEXT_MENU_CSS }),
+	);
+}
 
-	function closeMenu() {
-		if (!activeMenu) return;
-		activeMenu.remove();
-		activeMenu = null;
-	}
+function closeMenu(): void {
+	if (!activeMenu) return;
+	activeMenu.remove();
+	activeMenu = null;
+}
 
-	function showContextMenu(link: HTMLAnchorElement, e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		closeMenu();
-
-		const href = link.getAttribute("href") || "";
-		const sessionId = sessionIdFromHref(href);
-		const meta = foldersState.sessions.get(sessionId);
-		const currentFolderId = meta?.folderId || INBOX_ID;
-
-		const menu = document.createElement("div");
-		menu.className = "ai-sidebar-ctx";
-		menu.style.left = e.clientX + "px";
-		menu.style.top = e.clientY + "px";
-
-		// Rename item
-		const renameItem = document.createElement("div");
-		renameItem.className = "ai-sidebar-ctx-item";
-		renameItem.textContent = "✏️  Rename";
-		renameItem.addEventListener("click", () => {
+/** "✏️ Rename" — prompts, then writes through to the folder index and the link. */
+function buildRenameItem(
+	sessionId: string,
+	link: HTMLAnchorElement,
+): HTMLElement {
+	return h("div", {
+		class: "ai-sidebar-ctx-item",
+		text: "✏️  Rename",
+		onClick: () => {
 			closeMenu();
 			const currentMeta = foldersState.sessions.get(sessionId);
 			const currentDisplay = resolveSessionTitle(currentMeta ?? { sessionId });
 			const newTitle = prompt("Rename this session:", currentDisplay);
-			if (newTitle !== null && newTitle.trim()) {
-				setSessionCustomTitle(sessionId, newTitle.trim());
-				// Sync: update native history link's title attribute so it shows the rename
-				link.title = newTitle.trim();
-				const titleSpan = link.querySelector("span");
-				if (titleSpan) titleSpan.textContent = newTitle.trim();
-			}
-		});
-		menu.appendChild(renameItem);
+			if (newTitle === null || !newTitle.trim()) return;
+			const trimmed = newTitle.trim();
+			setSessionCustomTitle(sessionId, trimmed);
+			// Sync Arena's own link so the rename is visible without a reload.
+			link.title = trimmed;
+			const titleSpan = link.querySelector("span");
+			if (titleSpan) titleSpan.textContent = trimmed;
+		},
+	});
+}
 
-		// Separator
-		const sep = document.createElement("div");
-		sep.className = "ai-sidebar-ctx-sep";
-		menu.appendChild(sep);
-
-		// Move to folder trigger
-		const moveItem = document.createElement("div");
-		moveItem.className = "ai-sidebar-ctx-item";
-		const trigger = document.createElement("div");
-		trigger.className = "ai-sidebar-ctx-trigger";
-		const triggerLabel = document.createElement("span");
-		triggerLabel.textContent = "📁  Move to folder";
-		const arrow = document.createElement("span");
-		arrow.className = "ai-sidebar-ctx-arrow";
-		arrow.textContent = "▸";
-		trigger.appendChild(triggerLabel);
-		trigger.appendChild(arrow);
-		moveItem.appendChild(trigger);
-		menu.appendChild(moveItem);
-
-		// Sub-menu: folder list
-		const sub = document.createElement("div");
-		sub.className = "ai-sidebar-ctx-sub";
-		moveItem.addEventListener("click", (ev) => {
-			ev.stopPropagation();
-			if (sub.style.display === "block") {
-				sub.style.display = "none";
-				return;
-			}
-			// Clear and rebuild folder list
-			while (sub.firstChild) sub.removeChild(sub.firstChild);
-			foldersState.folders.forEach((folder) => {
-				const item = document.createElement("div");
-				item.className =
-					"ai-sidebar-ctx-sub-item" +
-					(folder.id === currentFolderId ? " active" : "");
-				item.textContent =
+/** Rebuild the folder list inside the sub-menu from current state. */
+function fillFolderList(
+	sub: HTMLElement,
+	sessionId: string,
+	meta: SessionMeta | undefined,
+	currentFolderId: string,
+): void {
+	sub.textContent = "";
+	for (const folder of foldersState.folders) {
+		const isActive = folder.id === currentFolderId;
+		sub.appendChild(
+			h("div", {
+				class: "ai-sidebar-ctx-sub-item" + (isActive ? " active" : ""),
+				text:
 					(folder.id === INBOX_ID ? "📥  " : "") +
 					folder.name +
-					(folder.id === currentFolderId ? " ✓" : "");
-				item.addEventListener("click", (ev2) => {
-					ev2.stopPropagation();
+					(isActive ? " ✓" : ""),
+				onClick: (ev) => {
+					ev.stopPropagation();
 					addSessionToFolder(sessionId, meta?.title || "Untitled", folder.id);
 					closeMenu();
-				});
-				sub.appendChild(item);
-			});
-			sub.style.display = "block";
-		});
-		moveItem.appendChild(sub);
-		sub.addEventListener("click", (ev) => ev.stopPropagation());
+				},
+			}),
+		);
+	}
+}
 
-		document.body.appendChild(menu);
-		activeMenu = menu;
+/** "📁 Move to folder ▸" plus its lazily-filled sub-menu. */
+function buildMoveItem(
+	sessionId: string,
+	meta: SessionMeta | undefined,
+	currentFolderId: string,
+): HTMLElement {
+	const sub = h("div", { class: "ai-sidebar-ctx-sub" });
+	// Clicks inside the sub-menu must not bubble to the trigger and re-toggle it.
+	sub.addEventListener("click", (ev) => ev.stopPropagation());
 
-		// Keep sub-menu inside viewport
-		requestAnimationFrame(() => {
-			const rect = menu.getBoundingClientRect();
-			if (rect.right > window.innerWidth)
-				menu.style.left = window.innerWidth - rect.width - 8 + "px";
-			if (rect.bottom > window.innerHeight)
-				menu.style.top = window.innerHeight - rect.height - 8 + "px";
+	const moveItem = h(
+		"div",
+		{
+			class: "ai-sidebar-ctx-item",
+			onClick: (ev) => {
+				ev.stopPropagation();
+				if (sub.style.display === "block") {
+					sub.style.display = "none";
+					return;
+				}
+				fillFolderList(sub, sessionId, meta, currentFolderId);
+				sub.style.display = "block";
+			},
+		},
+		h(
+			"div",
+			{ class: "ai-sidebar-ctx-trigger" },
+			h("span", { text: "📁  Move to folder" }),
+			h("span", { class: "ai-sidebar-ctx-arrow", text: "▸" }),
+		),
+	);
+	moveItem.appendChild(sub);
+	return moveItem;
+}
+
+/** Nudge the menu back on screen if it opened too close to an edge. */
+function clampToViewport(menu: HTMLElement): void {
+	requestAnimationFrame(() => {
+		const rect = menu.getBoundingClientRect();
+		if (rect.right > window.innerWidth)
+			menu.style.left = window.innerWidth - rect.width - EDGE_MARGIN + "px";
+		if (rect.bottom > window.innerHeight)
+			menu.style.top = window.innerHeight - rect.height - EDGE_MARGIN + "px";
+	});
+}
+
+function showContextMenu(link: HTMLAnchorElement, e: MouseEvent): void {
+	e.preventDefault();
+	e.stopPropagation();
+	closeMenu();
+
+	const sessionId = sessionIdFromHref(link.getAttribute("href") || "");
+	const meta = foldersState.sessions.get(sessionId);
+	const currentFolderId = meta?.folderId || INBOX_ID;
+
+	const menu = h(
+		"div",
+		{
+			class: "ai-sidebar-ctx",
+			style: { left: e.clientX + "px", top: e.clientY + "px" },
+		},
+		buildRenameItem(sessionId, link),
+		h("div", { class: "ai-sidebar-ctx-sep" }),
+		buildMoveItem(sessionId, meta, currentFolderId),
+	);
+
+	document.body.appendChild(menu);
+	activeMenu = menu;
+	clampToViewport(menu);
+}
+
+/** Attach the contextmenu handler to every history link not yet bound. */
+function bindLinks(): void {
+	for (const link of queryHistoryLinks(document)) {
+		if (link.dataset.aiSidebarCtxBound) continue;
+		link.dataset.aiSidebarCtxBound = "1";
+		link.addEventListener("contextmenu", (e) => {
+			showContextMenu(link, e as MouseEvent);
 		});
 	}
+}
 
-	// Close on outside click / Escape
+/**
+ * Install the context menu. Idempotent: a second call returns the existing
+ * Disposer rather than stacking another set of document listeners.
+ */
+export function setupHistoryContextMenu(): Disposer {
+	if (contextMenuDisposer) return contextMenuDisposer;
+
+	ensureStyles();
+
 	const onDocClick = (ev: MouseEvent) => {
 		if (!activeMenu) return;
 		if (!activeMenu.contains(ev.target as Node)) closeMenu();
@@ -165,20 +198,9 @@ export function setupHistoryContextMenu(): Disposer {
 	document.addEventListener("click", onDocClick);
 	document.addEventListener("keydown", onKeyDown);
 
-	// Bind existing links
-	function bindLinks() {
-		const links = queryHistoryLinks(document);
-		links.forEach((link) => {
-			if (link.dataset.aiSidebarCtxBound) return;
-			link.dataset.aiSidebarCtxBound = "1";
-			link.addEventListener("contextmenu", (e) => {
-				showContextMenu(link, e as MouseEvent);
-			});
-		});
-	}
 	bindLinks();
 
-	// Re-bind for Arena SPA navigation
+	// Re-bind as Arena's SPA re-renders its history list.
 	const observer = new MutationObserver(() => bindLinks());
 	if (document.body) {
 		observer.observe(document.body, { childList: true, subtree: true });

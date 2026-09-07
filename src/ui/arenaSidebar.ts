@@ -7,6 +7,8 @@
 
 import type { Disposer, SessionFolder, SessionMeta } from "../types";
 import { findArenaQuickNavContainer } from "../platform/arenaDom";
+import { h } from "./dom";
+import { ASL } from "./styles/arenaSidebar";
 import { onStorageChanged } from "../platform/storage";
 import { resolveSessionTitle } from "../titleResolver";
 import {
@@ -42,27 +44,22 @@ const ARENA_FOLDER_ENTRY_ATTR = "data-ai-sidebar-folder-entry";
  * Does NOT open the modal — that is handled by the onclick.
  */
 function buildArenaFolderEntry(onToggle: () => void): HTMLAnchorElement {
-	const a = document.createElement("a");
-	a.setAttribute(ARENA_FOLDER_ENTRY_ATTR, "1");
-	a.className =
-		"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md border border-transparent pr-2 text-sidebar-foreground shadow-none transition-[color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[active=true]:bg-sidebar-accent group-data-[active=true]:text-sidebar-accent-foreground group-data-[active=true]:hover:bg-sidebar-accent/90";
-
-	const icon = document.createElement("span");
-	icon.className =
-		"flex aspect-square h-[32px] flex-shrink-0 items-center justify-center rounded-md p-1.5 text-base leading-none";
-	icon.textContent = "🗂";
-	a.appendChild(icon);
-
-	const label = document.createElement("span");
-	label.className = "flex-1 truncate text-sm font-medium";
-	label.textContent = "Session Library";
-	a.appendChild(label);
-
-	a.addEventListener("click", (e) => {
-		e.preventDefault();
-		onToggle();
-	});
-	return a;
+	return h(
+		"a",
+		{
+			class: ASL.folderEntryClass,
+			attrs: { [ARENA_FOLDER_ENTRY_ATTR]: "1" },
+			onClick: (e) => {
+				e.preventDefault();
+				onToggle();
+			},
+		},
+		h("span", { class: ASL.folderEntryIconClass, text: "🗂" }),
+		h("span", {
+			class: "flex-1 truncate text-sm font-medium",
+			text: "Session Library",
+		}),
+	);
 }
 
 // ─── Inline Session Library Section ───────────────────────────────────────────────────────────────
@@ -162,115 +159,107 @@ export function setupFoldersStorageSync(): Disposer {
  * Render the Session Library content into an existing container element.
  * Called when the section is opened. Re-renders every time to pick up latest state.
  */
-function renderArenaSessionLibrarySection(container: HTMLElement): void {
-	// Clear existing content
-	while (container.firstChild) container.removeChild(container.firstChild);
-
-	// ── Folder list ──────────────────────────────────────────────────────────
-	const foldersList = document.createElement("div");
-	foldersList.className = "asl-folders";
-	foldersList.style.cssText = "margin-bottom: 6px;";
-
-	foldersState.folders.forEach((folder) => {
+/** Folder rows. Clicking one makes it the active folder and re-renders. */
+function buildFolderList(container: HTMLElement): HTMLElement {
+	const list = h("div", {
+		class: "asl-folders",
+		style: { cssText: ASL.foldersList },
+	});
+	for (const folder of foldersState.folders) {
 		const isActive = foldersState.activeFolderId === folder.id;
-		const row = document.createElement("div");
-		row.className = "asl-folder-item" + (isActive ? " active" : "");
-		row.style.cssText =
-			"display: flex; align-items: center; justify-content: space-between;" +
-			"padding: 5px 6px; border-radius: 5px; cursor: pointer;" +
-			"font-size: 12px; color: #000000;" +
-			"transition: background 0.08s;";
-		if (isActive) {
-			row.style.background = "rgba(77,124,255,0.15)";
-			row.style.color = "#7aa3ff";
-		}
-
-		const name = document.createElement("span");
-		name.textContent = folder.name;
-		name.style.cssText =
-			"flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
-		row.appendChild(name);
-
-		const count = document.createElement("span");
-		count.textContent = String(getSessionsInFolder(folder.id).length);
-		count.style.cssText =
-			"font-size: 10px; color: #374151; margin-left: 4px; flex-shrink: 0;";
-		row.appendChild(count);
-
-		row.addEventListener("click", () => {
-			foldersState.activeFolderId = folder.id;
-			renderArenaSessionLibrarySection(container);
-		});
-
-		foldersList.appendChild(row);
-	});
-
-	// ── New folder input ──────────────────────────────────────────────────────
-	const inputWrap = document.createElement("div");
-	inputWrap.style.cssText = "margin-bottom: 6px;";
-	const input = document.createElement("input");
-	input.placeholder = "+ New folder…";
-	input.maxLength = 40;
-	input.style.cssText =
-		"width: 100%; box-sizing: border-box;" +
-		"padding: 4px 8px; border: 1px solid rgba(255,255,255,0.08);" +
-		"border-radius: 5px; background: rgba(255,255,255,0.05);" +
-		"color: #000000; font-size: 11px; outline: none;";
-	input.addEventListener("keydown", (e) => {
-		if (e.key === "Enter" && input.value.trim()) {
-			const folder = createFolder(input.value.trim());
-			if (folder) {
-				input.value = "";
-				renderArenaSessionLibrarySection(container);
-			}
-		}
-	});
-	inputWrap.appendChild(input);
-
-	// ── Session list ─────────────────────────────────────────────────────────
-	const sessions = getSessionsInFolder(foldersState.activeFolderId);
-	const sessionsWrap = document.createElement("div");
-	sessionsWrap.style.cssText = "max-height: 200px; overflow-y: auto;";
-
-	if (sessions.length === 0) {
-		const empty = document.createElement("div");
-		empty.textContent = "No sessions in this folder";
-		empty.style.cssText =
-			"padding: 8px 6px; font-size: 11px; color: #374151; text-align: center;";
-		sessionsWrap.appendChild(empty);
-	} else {
-		sessions.forEach((s) => {
-			const item = document.createElement("a");
-			item.href = `/c/${s.sessionId}`;
-			item.className = "asl-session-item";
-			item.style.cssText =
-				"display: flex; flex-direction: column; gap: 1px;" +
-				"padding: 6px 6px; border-radius: 5px; text-decoration: none;" +
-				"cursor: pointer; transition: background 0.08s;";
-			const title = document.createElement("span");
-			title.textContent = resolveSessionTitle(s);
-			title.style.cssText =
-				"font-size: 12px; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
-			item.appendChild(title);
-			const meta = document.createElement("span");
-			meta.textContent = s.updatedAt
-				? new Date(s.updatedAt).toLocaleDateString()
-				: "";
-			meta.style.cssText = "font-size: 10px; color: #374151;";
-			item.appendChild(meta);
-			item.addEventListener("mouseenter", () => {
-				item.style.background = "rgba(255,255,255,0.05)";
-			});
-			item.addEventListener("mouseleave", () => {
-				item.style.background = "";
-			});
-			sessionsWrap.appendChild(item);
-		});
+		list.appendChild(
+			h(
+				"div",
+				{
+					class: "asl-folder-item" + (isActive ? " active" : ""),
+					style: {
+						cssText: ASL.folderRow + (isActive ? ASL.folderRowActive : ""),
+					},
+					onClick: () => {
+						foldersState.activeFolderId = folder.id;
+						renderArenaSessionLibrarySection(container);
+					},
+				},
+				h("span", {
+					text: folder.name,
+					style: { cssText: ASL.folderName },
+				}),
+				h("span", {
+					text: String(getSessionsInFolder(folder.id).length),
+					style: { cssText: ASL.folderCount },
+				}),
+			),
+		);
 	}
+	return list;
+}
 
-	container.appendChild(foldersList);
-	container.appendChild(inputWrap);
-	container.appendChild(sessionsWrap);
+/** "+ New folder…" input; Enter creates the folder and re-renders. */
+function buildNewFolderInput(container: HTMLElement): HTMLElement {
+	const input = h("input", {
+		placeholder: "+ New folder…",
+		maxLength: 40,
+		style: { cssText: ASL.newFolderInput },
+	});
+	input.addEventListener("keydown", (e) => {
+		if (e.key !== "Enter" || !input.value.trim()) return;
+		if (createFolder(input.value.trim())) {
+			input.value = "";
+			renderArenaSessionLibrarySection(container);
+		}
+	});
+	return h("div", { style: { cssText: ASL.newFolderWrap } }, input);
+}
+
+/** Sessions in the active folder, or an empty-state message. */
+function buildSessionList(): HTMLElement {
+	const wrap = h("div", { style: { cssText: ASL.sessionsWrap } });
+	const sessions = getSessionsInFolder(foldersState.activeFolderId);
+	if (sessions.length === 0) {
+		wrap.appendChild(
+			h("div", {
+				text: "No sessions in this folder",
+				style: { cssText: ASL.sessionsEmpty },
+			}),
+		);
+		return wrap;
+	}
+	for (const s of sessions) {
+		const item = h(
+			"a",
+			{
+				href: `/c/${s.sessionId}`,
+				class: "asl-session-item",
+				style: { cssText: ASL.sessionItem },
+			},
+			h("span", {
+				text: resolveSessionTitle(s),
+				style: { cssText: ASL.sessionTitle },
+			}),
+			h("span", {
+				text: s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "",
+				style: { cssText: ASL.sessionMeta },
+			}),
+		);
+		item.addEventListener("mouseenter", () => {
+			item.style.background = "rgba(255,255,255,0.05)";
+		});
+		item.addEventListener("mouseleave", () => {
+			item.style.background = "";
+		});
+		wrap.appendChild(item);
+	}
+	return wrap;
+}
+
+/** Rebuild the whole Session Library section from current state. */
+function renderArenaSessionLibrarySection(container: HTMLElement): void {
+	container.textContent = "";
+	container.append(
+		buildFolderList(container),
+		buildNewFolderInput(container),
+		buildSessionList(),
+	);
 }
 
 /**
