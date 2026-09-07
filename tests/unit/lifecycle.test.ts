@@ -14,6 +14,7 @@
 //    regression test the refactor plan called for: simulate N route changes and
 //    assert the listener count is flat.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildSidebar, quickNavOf } from "../__fixtures__/arenaDom";
 import {
 	disposeAll,
 	registerDisposer,
@@ -237,20 +238,9 @@ describe("resetSessionState covers the two remaining residual states", () => {
 	});
 
 	it("a route change closes the Session Library section", () => {
-		// Arena sidebar skeleton: wrapper > [0] > [1] > [0] > [2] (quick-nav DIV).
-		const wrapper = document.createElement("div");
-		wrapper.className = "x sidebar-wrapper y";
-		const floating = document.createElement("div");
-		wrapper.appendChild(floating);
-		floating.appendChild(document.createElement("span"));
-		const bgSidebar = document.createElement("div");
-		floating.appendChild(bgSidebar);
-		const floatingRoot = document.createElement("div");
-		bgSidebar.appendChild(floatingRoot);
-		floatingRoot.appendChild(document.createElement("span"));
-		floatingRoot.appendChild(document.createElement("span"));
-		const quickNav = document.createElement("div");
-		floatingRoot.appendChild(quickNav);
+		// Arena sidebar skeleton — shared fixture, see tests/__fixtures__/arenaDom.ts.
+		const wrapper = buildSidebar();
+		const quickNav = quickNavOf(wrapper);
 		const section = document.createElement("div");
 		section.setAttribute(LIBRARY_ATTR, "1");
 		section.style.display = "none";

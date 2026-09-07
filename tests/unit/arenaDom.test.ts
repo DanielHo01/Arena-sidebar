@@ -14,41 +14,7 @@ import {
 	findArenaSidebarWrapper,
 	queryHistoryLinks,
 } from "../../src/platform/arenaDom";
-
-/** Build Arena's sidebar skeleton: wrapper > [0] floating > [1] bg > [0] root > [2] nav */
-function buildSidebar({
-	wrapperClass = "x sidebar-wrapper y",
-	floatingChildren = 2,
-	bgChildren = 1,
-	rootChildren = 3,
-	navTag = "div",
-} = {}) {
-	const wrapper = document.createElement("div");
-	wrapper.className = wrapperClass;
-
-	const floating = document.createElement("div");
-	wrapper.appendChild(floating);
-
-	// children[0] is an unrelated sibling; children[1] IS the bg-sidebar.
-	for (let i = 0; i < floatingChildren - 1; i++) {
-		floating.appendChild(document.createElement("span"));
-	}
-	const bgSidebar = document.createElement("div");
-	floating.appendChild(bgSidebar);
-
-	const floatingRoot = document.createElement("div");
-	if (bgChildren > 0) bgSidebar.appendChild(floatingRoot);
-
-	for (let i = 0; i < rootChildren; i++) {
-		const child =
-			i === 2 ? document.createElement(navTag) : document.createElement("span");
-		child.dataset.slot = "nav" + i;
-		floatingRoot.appendChild(child);
-	}
-
-	document.body.appendChild(wrapper);
-	return wrapper;
-}
+import { buildSidebar } from "../__fixtures__/arenaDom";
 
 beforeEach(() => {
 	document.body.innerHTML = "";

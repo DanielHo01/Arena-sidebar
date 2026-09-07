@@ -531,17 +531,49 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 
 **关于这批 fixture 的一个陷阱：** `__NEXT_DATA__` 本身就是一个 `<script>` 标签，而 `extractBootstrapMessages` 的第二条恢复路径会正则扫描**所有** script 标签的文本。所以凡是要断言"JSON 遍历器接受了什么"的用例，必须把 payload 放在非 script 元素里，否则扫描路径会把它再加一遍。这是生产行为，不是测试假象。
 
-### Phase 6 — 测试规范定型
+### Phase 6 — 测试规范定型 ✅ 已完成
 
-- [ ] Vitest 落地，分层策略：
-  - `core/` → 纯单测，无环境
-  - `platform/` → 注入 fake chrome
-  - `features/` + `ui/` → jsdom
-  - **生命周期回归** → 监听器/observer 计数断言
-- [ ] 覆盖率门槛（`core/` 90%、整体 70%），CI 阻断
-- [ ] 修 `tests/arena-mock.html` 用真实 selector，或改为 `__fixtures__/arena-dom.ts` 由测试代码生成
-- [ ] `e2e-floating.cjs` 移到 `scripts/manual/` + README 标注，或删除
-- **验收**：CI 上覆盖率报告可见；故意引入一个回归（如把 fingerprint 改回去）能被 CI 拦住
+- [x] Vitest 落地（Phase 0 已做），18 文件 / 218 测试，全 jsdom
+- [x] 覆盖率门槛 CI 阻断——**但计划的数字是错的，见下**
+- [x] `tests/arena-mock.html` 已删除，骨架改为 `tests/__fixtures__/arenaDom.ts` 由测试代码生成
+- [x] `e2e-floating.cjs` 已删除（未移入 `scripts/manual/`，见下）
+- [x] README 的 9 条失实声明已订正
+- [x] **验收达成**：CI 覆盖率报告可见；两个回归探针均被拦住
+
+**计划里的覆盖率目标"整体 70%"不可达，且从来就不可达。** 它假设 `content.ts` 和 `ui/*` 可测，而这两处在 import 时即执行副作用、没有接缝。实测整体只有 **42.19 %**。与其把单一全局门槛降到能通过为止（那样纯逻辑层可以悄悄烂掉没人发现），改为**按目录设棘轮地板**——已经覆盖好的层就地钉死：
+
+| 作用域 | stmts | branches | functions | lines |
+| --- | --- | --- | --- | --- |
+| 全局（地板） | 42 | 42 | 45 | 42 |
+| `src/core/**` | **99** | **90** | **100** | **100** |
+| `src/platform/**` | **90** | **86** | **81** | **92** |
+
+计划要求的 `core/` 90 % 已超额达成（实测 99.17 %）。
+
+**两个验收探针（都确认变红，不是"应该能拦住"）：**
+
+1. **按目录门槛真会拦。** 往 `src/core/rounds.ts` 塞一个完全没测的函数 → 4 条 ERROR 全部触发（`src/core/**` 的 statements/branches/functions/lines 同时越线），而 **218 个测试仍然全绿**。这正说明这类回归（新增未测代码）只有门槛拦得住，测试拦不住。
+2. **计划点名的 fingerprint 回归真会拦。** 把 `withOccurrences` 改回 Phase 1 修复前的行为（不做序号、全部记 0）→ **5 个测试变红**：`numbers repeats in order of first appearance`、`keys on normalized content`、`one pass with 3 identical user turns keeps all 6 messages`、`and produces one round per user turn`、`re-extracting the same DOM does not duplicate them`。
+
+**删除而非移入 `scripts/manual/` 的理由：** `e2e-floating.cjs`（578 行）硬编码 `D:/edge-ai-sidebar` 与 `C:/Program Files (x86)/.../msedge.exe`，`require("ws")` 而 `ws` 不在 `devDependencies`。实际试跑确认失败：`spawn msedge.exe ENOENT` → `CDP not ready`。除文档外无任何代码引用它。移进 `scripts/manual/` 只是把跑不了的 578 行换个位置；真正的自动化已由 Vitest + jsdom 接管。git 历史保留。`tests/arena-mock.html`（71 行）同理，且 selector 已脱节。
+
+**fixture 整合：** `arenaDom.test.ts` 的 `buildSidebar()`（7 处调用）与 `lifecycle.test.ts` 里 16 行手工重建的同一棵骨架树，统一为 `tests/__fixtures__/arenaDom.ts`，另加 `quickNavOf()` 定位 quick-nav 节点。探针确认它没退化成空壳：把 `quickNavOf` 改成返回 index 0（错误节点），`a route change closes the Session Library section` 立刻变红。文件名不带 `.test.ts`，故不会被 vitest 的 `include` 当成测试套件。
+
+**README 订正的 9 条**（每条都在 `src/` 里零命中）：
+
+| README 原声明 | 实际 |
+| --- | --- |
+| "12 策略 DOM 选择器" | **2 个**具名常量 `USER_MESSAGE_SELECTOR` / `ASSISTANT_MESSAGE_SELECTOR` |
+| 自定义 selector 编辑 `src/content.ts` 的 `MESSAGE_SELECTORS` 数组 | 该数组**不存在**；实际在 `src/extract.ts` |
+| "API 配置捕获（URL、headers、请求体示例）" | 无此能力 |
+| "WebSocket 事件捕获" | `inject-hook.js` 只包 `window.fetch`，**无任何 WS 拦截** |
+| `[AI Sidebar Debug] N sample elements` | 不存在（统一前缀只有 `[AI Sidebar]`） |
+| `[AI Sidebar] WS event:` | 不存在 |
+| `[AI Sidebar] Chat request:` | 不存在（`chatCapture.ts` 里一个 `console.` 都没有） |
+| `[AI Sidebar] Chat round COMPLETE/streaming:` | 不存在 |
+| `__aiSidebarSamples` / `__chatRounds` | `window.__aiSidebar*` 已在 Phase 4（P1 #3）**主动移除**，换成 `src/state.ts` 里的模块内 `timers` 引用 |
+
+订正时保留了"已不存在"的说明行，避免下一个读者按旧文档再找一遍。
 
 ### Phase 7+ — 增量 Feature
 
