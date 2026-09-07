@@ -23,6 +23,7 @@ import {
 import { conversationStore } from "../../src/conversationStore";
 import { chatRounds } from "../../src/capture";
 import { foldersState } from "../../src/features/sessions";
+import { hiddenRoundIds } from "../../src/rounds";
 import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
 import { toggleArenaSessionLibrarySection } from "../../src/ui/arenaSidebar";
 import { setupHistoryTitleEditing } from "../../src/historyTitles";
@@ -132,6 +133,25 @@ describe("resetSessionState", () => {
 		panel.reverseOrder = false;
 		resetSessionState("s");
 		expect(panel.reverseOrder).toBe(false);
+	});
+
+	// ── the 9th residual state, found after Phase 4 ─────────────────────────
+	//
+	// hiddenRoundIds was missed by the Phase 4 sweep. It is worse than a stale
+	// cosmetic value: round ids are NOT session-scoped. Bootstrap messages get
+	// deterministic ids ("boot-" + results.length, "boot-" + path + "-" + n) and
+	// round.id is just msg.id, so two different conversations routinely produce
+	// the same round id. Hiding a round in one session therefore hid the
+	// same-numbered round in every session visited afterwards, with no way to
+	// bring it back -- the panel has no unhide control.
+	it("clears hidden rounds, which are keyed by an id that is not session-scoped", () => {
+		hiddenRoundIds.add("boot-messages-0-0");
+		hiddenRoundIds.add("boot-3");
+		expect(hiddenRoundIds.size).toBe(2);
+
+		resetSessionState("s");
+
+		expect(hiddenRoundIds.size).toBe(0);
 	});
 });
 

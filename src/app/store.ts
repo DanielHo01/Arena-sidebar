@@ -27,6 +27,7 @@ import { resetExtractState } from "../extract";
 import { resetPreScroll } from "../features/prescroll";
 import { resetLibrarySection } from "../ui/arenaSidebar";
 import { resetTitleCache } from "../historyTitles";
+import { resetHiddenRounds } from "../rounds";
 
 /**
  * Clear all session-scoped state and adopt `sessionId`.
@@ -49,6 +50,7 @@ export function resetSessionState(sessionId: string): void {
 	resetRscState();
 	resetTitleCache();
 	resetLibrarySection();
+	resetHiddenRounds();
 
 	panel.currentRoundIdx = 0;
 	panel.highlightInitialized = false;
