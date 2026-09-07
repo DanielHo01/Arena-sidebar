@@ -5,14 +5,16 @@
 // they are worth pinning with tests: when Arena changes, these tests fail and
 // point at exactly which assumption died, instead of the extension silently
 // rendering nothing.
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	HISTORY_LINK_SELECTOR,
 	SCROLL_CONTAINER_SELECTOR,
 	SIDEBAR_WRAPPER_SELECTOR,
-	findArenaQuickNavContainer,
 	findArenaSidebarWrapper,
+	inspectArenaQuickNav,
 	queryHistoryLinks,
+	resetQuickNavReport,
+	resolveQuickNavContainer,
 } from "../../src/platform/arenaDom";
 import { buildSidebar } from "../__fixtures__/arenaDom";
 
@@ -77,41 +79,148 @@ describe("findArenaSidebarWrapper", () => {
 	});
 });
 
-describe("findArenaQuickNavContainer", () => {
-	it("returns the quick-nav container on the expected structure", () => {
+// The index path children[0] -> [1] -> [0] -> [2] is the most fragile thing in
+// the codebase: it encodes Arena's DOM order, nothing semantic. A bare null
+// collapses six different breakages into one value, and all three call sites in
+// arenaSidebar.ts bail out silently on it -- so when Arena ships a redesign the
+// extension stops rendering and nothing says which assumption died.
+//
+// inspectArenaQuickNav names the failing level instead, and
+// resolveQuickNavContainer reports it. Both are pinned here because these are
+// the assertions that should fail when Arena changes its markup.
+describe("inspectArenaQuickNav", () => {
+	it("returns the element on the expected structure", () => {
 		buildSidebar();
-		const nav = findArenaQuickNavContainer();
-		expect(nav).not.toBeNull();
-		expect(nav?.dataset.slot).toBe("nav2");
+		const probe = inspectArenaQuickNav();
+		expect(probe.ok).toBe(true);
+		if (probe.ok) expect(probe.el.dataset.slot).toBe("nav2");
 	});
 
-	it("returns null when the wrapper is absent", () => {
-		expect(findArenaQuickNavContainer()).toBeNull();
+	it("names 'wrapper' when the sidebar wrapper is absent", () => {
+		expect(inspectArenaQuickNav()).toEqual({ ok: false, failedAt: "wrapper" });
 	});
 
-	it("returns null when the floating container has too few children", () => {
+	it("names 'floating' when the wrapper has no children", () => {
+		document.body.innerHTML = `<div class="sidebar-wrapper"></div>`;
+		expect(inspectArenaQuickNav()).toEqual({
+			ok: false,
+			failedAt: "floating",
+		});
+	});
+
+	it("names 'bg-sidebar' when the floating container is too small", () => {
 		buildSidebar({ floatingChildren: 1 });
-		expect(findArenaQuickNavContainer()).toBeNull();
+		expect(inspectArenaQuickNav()).toEqual({
+			ok: false,
+			failedAt: "bg-sidebar",
+		});
 	});
 
-	it("returns null when bg-sidebar is empty", () => {
+	it("names 'floating-root' when bg-sidebar is empty", () => {
 		buildSidebar({ bgChildren: 0 });
-		expect(findArenaQuickNavContainer()).toBeNull();
+		expect(inspectArenaQuickNav()).toEqual({
+			ok: false,
+			failedAt: "floating-root",
+		});
 	});
 
-	it("returns null when the nav slot is missing", () => {
+	it("names 'quick-nav' when the nav slot is missing", () => {
 		buildSidebar({ rootChildren: 2 });
-		expect(findArenaQuickNavContainer()).toBeNull();
+		expect(inspectArenaQuickNav()).toEqual({
+			ok: false,
+			failedAt: "quick-nav",
+		});
 	});
 
-	it("returns null when slot 2 is not a DIV", () => {
+	it("names 'nav-tag' when slot 2 exists but is not a DIV", () => {
 		buildSidebar({ navTag: "span" });
-		expect(findArenaQuickNavContainer()).toBeNull();
+		expect(inspectArenaQuickNav()).toEqual({
+			ok: false,
+			failedAt: "nav-tag",
+		});
 	});
 
 	it("never throws on a hostile partial structure", () => {
 		document.body.innerHTML = `<div class="sidebar-wrapper"></div>`;
-		expect(() => findArenaQuickNavContainer()).not.toThrow();
-		expect(findArenaQuickNavContainer()).toBeNull();
+		expect(() => inspectArenaQuickNav()).not.toThrow();
+	});
+});
+
+// resolveQuickNavContainer is what the three call sites in arenaSidebar.ts use.
+// The property that matters is not "it warns" but "it warns exactly once per
+// distinct failure": ensureArenaFolderEntry runs from a MutationObserver, and
+// during page load the sidebar legitimately does not exist yet. A warn on every
+// null would print hundreds of lines per load and bury the one line that says
+// Arena changed its markup.
+describe("resolveQuickNavContainer", () => {
+	let warn: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		resetQuickNavReport();
+		warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		warn.mockRestore();
+	});
+
+	it("returns the container and stays quiet on the expected structure", () => {
+		buildSidebar();
+		expect(resolveQuickNavContainer()?.dataset.slot).toBe("nav2");
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it("returns null and names the broken level when the structure is wrong", () => {
+		buildSidebar({ rootChildren: 2 });
+		expect(resolveQuickNavContainer()).toBeNull();
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(String(warn.mock.calls[0]?.[0])).toContain("quick-nav");
+	});
+
+	it("reports a repeated identical failure only once", () => {
+		// The anti-spam property. The observer fires on every mutation.
+		buildSidebar({ rootChildren: 2 });
+		resolveQuickNavContainer();
+		resolveQuickNavContainer();
+		resolveQuickNavContainer();
+		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports again when a DIFFERENT level breaks", () => {
+		buildSidebar({ rootChildren: 2 });
+		resolveQuickNavContainer();
+
+		document.body.innerHTML = "";
+		resolveQuickNavContainer();
+
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(String(warn.mock.calls[0]?.[0])).toContain("quick-nav");
+		expect(String(warn.mock.calls[1]?.[0])).toContain("wrapper");
+	});
+
+	it("re-latches after recovery, so a later break is reported", () => {
+		buildSidebar({ rootChildren: 2 });
+		resolveQuickNavContainer();
+		expect(warn).toHaveBeenCalledTimes(1);
+
+		// Arena finishes rendering: the container returns and stays quiet.
+		document.body.innerHTML = "";
+		buildSidebar();
+		resolveQuickNavContainer();
+		expect(warn).toHaveBeenCalledTimes(1);
+
+		// A redesign lands later in the same page session.
+		document.body.innerHTML = "";
+		buildSidebar({ navTag: "span" });
+		resolveQuickNavContainer();
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(String(warn.mock.calls[1]?.[0])).toContain("nav-tag");
+	});
+
+	it("warns once, not once per observer tick, while the sidebar is absent", () => {
+		// The common page-load case: no wrapper at all, probed repeatedly.
+		resolveQuickNavContainer();
+		resolveQuickNavContainer();
+		expect(warn).toHaveBeenCalledTimes(1);
 	});
 });

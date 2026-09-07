@@ -6,7 +6,7 @@
 // its own beyond whether the section is currently open.
 
 import type { Disposer, SessionFolder, SessionMeta } from "../types";
-import { findArenaQuickNavContainer } from "../platform/arenaDom";
+import { resolveQuickNavContainer } from "../platform/arenaDom";
 import { h } from "./dom";
 import { ASL } from "./styles/arenaSidebar";
 import { onStorageChanged } from "../platform/storage";
@@ -100,7 +100,7 @@ function buildLibrarySection(): HTMLDivElement {
  * Updates the 🗂 entry's active state accordingly.
  */
 export function toggleArenaSessionLibrarySection(): void {
-	const container = findArenaQuickNavContainer();
+	const container = resolveQuickNavContainer();
 	const section = container?.querySelector<HTMLElement>(
 		`[${LIBRARY_SECTION_ATTR}]`,
 	);
@@ -146,7 +146,7 @@ export function setupFoldersStorageSync(): Disposer {
 		}
 		// Re-render if section is open
 		if (librarySectionOpen) {
-			const container = findArenaQuickNavContainer();
+			const container = resolveQuickNavContainer();
 			const section = container?.querySelector<HTMLElement>(
 				`[${LIBRARY_SECTION_ATTR}]`,
 			);
@@ -269,7 +269,7 @@ function renderArenaSessionLibrarySection(container: HTMLElement): void {
  * @param onOpen  Callback to open the Session Library panel.
  */
 export function ensureArenaFolderEntry(onToggle: () => void): void {
-	const container = findArenaQuickNavContainer();
+	const container = resolveQuickNavContainer();
 	if (!container) return;
 
 	// Inject 🗂 entry if not already present
