@@ -7,7 +7,7 @@
 //   createFolder — create a new folder
 //   getSessionsInFolder — list sessions in a folder
 
-import type { SessionFolder, SessionMeta } from "./types";
+import type { Disposer, SessionFolder, SessionMeta } from "./types";
 import { contextValid } from "./state";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
@@ -468,13 +468,24 @@ export function ensureArenaFolderEntry(onToggle: () => void): void {
 
 // ─── Arena History Context Menu ───────────────────────────────────────────────────────────────
 
+/** Holds the live registration so repeat calls are no-ops. See the disposer. */
+let contextMenuDisposer: Disposer | null = null;
+
 /**
  * Inject a right-click context menu on Arena's native history links (a[href*="/c/"]).
  * Shows "✏️ Rename" and "📁 Move to folder ▶" with a folder sub-menu.
  * Click-outside and Escape close the menu.
  * MutationObserver rebinds new links added by Arena SPA navigation.
+ *
+ * Idempotent: content.ts calls this on bootstrap AND on every SPA route change.
+ * Before the guard below, each call added another document-level click listener,
+ * another keydown listener and another body-wide MutationObserver — so the
+ * full-body querySelectorAll inside bindLinks ran once per visited session on
+ * every DOM mutation. Re-calling returns the existing disposer.
  */
-export function setupHistoryContextMenu(): void {
+export function setupHistoryContextMenu(): Disposer {
+	if (contextMenuDisposer) return contextMenuDisposer;
+
 	const styleId = "ai-sidebar-ctx-style";
 	if (!document.getElementById(styleId)) {
 		const s = document.createElement("style");
@@ -679,6 +690,21 @@ export function setupHistoryContextMenu(): void {
 	if (document.body) {
 		observer.observe(document.body, { childList: true, subtree: true });
 	}
+
+	contextMenuDisposer = () => {
+		document.removeEventListener("click", onDocClick);
+		document.removeEventListener("keydown", onKeyDown);
+		observer.disconnect();
+		closeMenu();
+		// Clear the per-link bound flags so a later setup can rebind them.
+		document
+			.querySelectorAll<HTMLElement>("[data-ai-sidebar-ctx-bound]")
+			.forEach((el) => {
+				delete el.dataset.aiSidebarCtxBound;
+			});
+		contextMenuDisposer = null;
+	};
+	return contextMenuDisposer;
 }
 
 /** Call once from content.ts bootstrap to load persisted folders from storage. */

@@ -115,3 +115,12 @@ export interface SessionMeta {
 	updatedAt: number;
 	url?: string;
 }
+
+// ─── Lifecycle ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Undo a `setup*` registration: remove listeners, disconnect observers, drop
+ * references. Every setup function returns one so the entry point can tear the
+ * whole extension down on SPA navigation instead of leaking registrations.
+ */
+export type Disposer = () => void;
