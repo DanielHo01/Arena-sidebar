@@ -77,14 +77,6 @@ async function waitForCDP() {
 	return false;
 }
 
-function hasAttr(attrs, name, value) {
-	if (!attrs) return false;
-	for (let i = 0; i < attrs.length; i += 2) {
-		if (attrs[i] === name && attrs[i + 1] === value) return true;
-	}
-	return false;
-}
-
 // Find the shadow root nodeId via CDP DOM.querySelector + describeNode (pierces closed shadow)
 async function getShadowNodeId(send, sess) {
 	const doc = await send("DOM.getDocument", { depth: 0 }, sess);
@@ -367,7 +359,7 @@ async function run() {
 	await send(
 		"Runtime.evaluate",
 		{
-			expression: `(async () => { try { await fetch('/api/chat', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'hello' }] }), headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test' } }); } catch(e) {} })()`,
+			expression: `(async () => { try { await fetch('/api/chat', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'hello' }] }), headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test' } }); } catch {} })()`,
 			returnByValue: true,
 			awaitPromise: true,
 		},

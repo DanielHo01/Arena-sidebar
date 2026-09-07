@@ -23,7 +23,7 @@
 					typeof window[k] === "string" ? window[k] : JSON.stringify(window[k]),
 					30000,
 				);
-			} catch (e) {}
+			} catch {}
 	});
 
 	const grabStore = (s) => {
@@ -48,7 +48,7 @@
 		out.indexedDB = indexedDB.databases
 			? (await indexedDB.databases()).map((d) => `${d.name} v${d.version}`)
 			: "[unsupported]";
-	} catch (e) {
+	} catch {
 		out.indexedDB = "[err]";
 	}
 
@@ -98,13 +98,13 @@
 		await navigator.clipboard.writeText(json);
 		console.log("✅ [1/3] Clipboard (navigator.clipboard)");
 		saved = true;
-	} catch (e) {}
+	} catch {}
 	if (!saved)
 		try {
 			copy(json);
 			console.log("✅ [2/3] Clipboard (copy())");
 			saved = true;
-		} catch (e) {}
+		} catch {}
 	if (!saved)
 		try {
 			const a = document.createElement("a");
@@ -118,7 +118,7 @@
 			document.body.removeChild(a);
 			console.log("✅ [3/3] Downloaded: " + a.download);
 			saved = true;
-		} catch (e) {}
+		} catch {}
 	if (!saved)
 		console.log(
 			"❌ All failed — 手动复制 ===ARENA_DUMP_START=== 和 ===之间=== 的内容",

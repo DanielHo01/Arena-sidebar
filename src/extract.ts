@@ -162,7 +162,7 @@ function collectAllElements(): Array<{
 				if (!isLikelyRealMessage(el, "user")) return;
 				all.push({ el, role: "user" });
 			});
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — selector may throw on detached nodes */
 		}
 		try {
@@ -170,7 +170,7 @@ function collectAllElements(): Array<{
 				if (!isLikelyRealMessage(el, "assistant")) return;
 				all.push({ el, role: "assistant" });
 			});
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — selector may throw on detached nodes */
 		}
 		const anyRoot = root as Element & { shadowRoot?: ShadowRoot | null };

@@ -282,7 +282,7 @@ export function extractBootstrapMessages(): SidebarMessage[] {
 				results.push({ ...m, origin: "bootstrap" });
 			}
 		}
-	} catch (_e) {
+	} catch {
 		/* intentionally empty — __NEXT_DATA__ may not exist on all pages */
 	}
 
@@ -314,7 +314,7 @@ export function extractBootstrapMessages(): SidebarMessage[] {
 				}
 			}
 		}
-	} catch (_e) {
+	} catch {
 		/* intentionally empty — script scanning may throw */
 	}
 

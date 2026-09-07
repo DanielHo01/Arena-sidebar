@@ -390,12 +390,12 @@ function countRenderedMessages(): number {
 	let n = 0;
 	try {
 		n += main.querySelectorAll(USER_MESSAGE_SELECTOR).length;
-	} catch (_e) {
+	} catch {
 		/* selector may throw on detached nodes */
 	}
 	try {
 		n += main.querySelectorAll(ASSISTANT_MESSAGE_SELECTOR).length;
-	} catch (_e) {
+	} catch {
 		/* selector may throw on detached nodes */
 	}
 	return n;

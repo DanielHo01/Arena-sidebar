@@ -73,7 +73,7 @@ function checkChatCapture() {
 				lastRequestTs = r.ts;
 				pendingRequests.set(r.sessionId, r);
 			}
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — JSON parse of request dataset; no-op when stale */
 		}
 	}
@@ -103,7 +103,7 @@ function checkChatCapture() {
 					}
 				}
 			}
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — JSON parse of response dataset; no-op when stale */
 		}
 	}
@@ -217,7 +217,7 @@ export function harvestModelNames(): number {
 				Array.isArray((v as { initialModels?: unknown[] }).initialModels)
 			)
 				candidates.push((v as { initialModels: unknown[] }).initialModels);
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — __NEXT_DATA__ path may not exist on all pages */
 		}
 	}
@@ -231,12 +231,12 @@ export function harvestModelNames(): number {
 			if (m) {
 				try {
 					candidates.push(JSON.parse("[" + m[1] + "]"));
-				} catch (_e) {
+				} catch {
 					/* intentionally empty — JSON parse of extracted snippet may fail */
 				}
 			}
 		}
-	} catch (_e) {
+	} catch {
 		/* intentionally empty — __NEXT_DATA__ element may not exist */
 	}
 	try {
@@ -249,12 +249,12 @@ export function harvestModelNames(): number {
 			if (m) {
 				try {
 					candidates.push(JSON.parse("[" + m[1] + "]"));
-				} catch (_e) {
+				} catch {
 					/* intentionally empty — JSON parse of extracted snippet may fail */
 				}
 			}
 		});
-	} catch (_e) {
+	} catch {
 		/* intentionally empty — script iteration may throw */
 	}
 	try {
@@ -269,7 +269,7 @@ export function harvestModelNames(): number {
 				id = m[2];
 			if (name && id && !modelNameById.has(id)) modelNameById.set(id, name);
 		}
-	} catch (_e) {
+	} catch {
 		/* intentionally empty — matchAll on large script text may throw */
 	}
 	let n = 0;
