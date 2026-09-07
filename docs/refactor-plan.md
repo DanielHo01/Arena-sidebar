@@ -491,14 +491,45 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 
 **teardown 有了真实消费者**：bootstrap 里 `window.addEventListener("pagehide", disposeAll, { once: true })`，注册表现在拥有本扩展装过的每一个监听器和定时器。
 
-### Phase 5 — UI 层拆分（用户要求的"文件拆解美化"）
+### Phase 5 — UI 层拆分（用户要求的"文件拆解美化"）✅ 已完成
 
-- [ ] `folders.ts` 760 行 → `features/sessions.ts`（纯 CRUD）+ `ui/arenaSidebar.ts`（注入）+ `ui/contextMenu.ts`（右键菜单，CSS 移出）
-- [ ] `content.ts` 638 行 → 装配 + `app/loop.ts` + `features/prescroll.ts`
-- [ ] `ui/panel.ts` 409 行 → `skeleton` / `roundItem` / `list` / `highlight`
-- [ ] `ui/modals.ts` 372 行 → `export` / `summary`（纯逻辑已在 Phase 3 抽走）
-- [ ] 引入 `h()` helper 替代 createElement 流水账
-- **验收**：无文件 > 300 行；无函数 > 80 行；`npm run build` 体积不增
+计划里的行数是取证时的估值，下表左列是 **Phase 4 基线 `7ae78d8` 的实测值**（`folders.ts` 实为 759 行，非 760；`content.ts` 实为 517 行，非 638——因为 Phase 1 已把 `prescroll` 抽走、Phase 3 已把 `modals` 纯逻辑抽走）。
+
+**文件拆分**（全部按 section marker 切，除注明外未改写逻辑）：
+
+| 原文件 | 基线 | 拆分后 | 新增模块 |
+| --- | --- | --- | --- |
+| `folders.ts` | 759 | 已删除 | `features/sessions.ts` 227 + `ui/arenaSidebar.ts` 292 + `ui/contextMenu.ts` 224 |
+| `content.ts` | 517 | **240** | `app/loop.ts` 149 + `ui/keyboard.ts` 88 + `ui/render.ts` 114 |
+| `conversationStore.ts` | 436 | **276** | `features/bootstrapExtract.ts` 114 + `features/roundNav.ts` 66 |
+| `ui/panel.ts` | 413 | **17**（聚合器） | `ui/panel/{skeleton 161, roundItem 151, list 68, highlight 54}` |
+| `ui/styles.ts` | 319 | **19**（聚合器） | `ui/styles/{base, list, contextMenu, arenaSidebar}` |
+| `capture.ts` | 324 | **22**（聚合器） | `capture/{chatCapture 131, models 119, rsc 91}` |
+
+**超长函数**（基线 6 个 → **0**）：
+
+| 函数 | 基线 | 现在 | 做法 |
+| --- | --- | --- | --- |
+| `setupHistoryContextMenu` | 222 | **38** | 用 `h()` 重写；58 行内联 CSS → `ui/styles/contextMenu.ts` |
+| `renderArenaSessionLibrarySection` | 110 | **8** | 拆成 `buildFolderList` / `buildNewFolderInput` / `buildSessionList` |
+| `showSummaryModal` | 104 | **40** | 抽 `pasteIntoChat` / `openInNewChat` / `buildSummaryActions`，用 `h()` 重写 |
+| `computeRounds` | 94 | **73** | 开场助手轮的字面量重复出现两次（除 `index` 外逐字相同）→ `makeLeadRound()` |
+| `refreshUI` | 91 | **4** | 整体外移到 `ui/render.ts`，按 FAB / 面板 / host 属性分三个函数 |
+| `startPreScroll` | 81 | **20** | 抽 `retryUntilContainer` / `scrollUntilStable` |
+
+- [x] `h()` helper（`ui/dom.ts`）替代 createElement 流水账，12 个测试，0 依赖
+- [x] **验收达成**：文件 > 300 行 **6 → 0**；函数 > 80 行 **6 → 0**；bundle **55.52 → 55.39 kB**（gzip 17.60），不增反降
+- 测试 188 → **218**（18 文件），覆盖率 38.58 → **42.19 %** stmts
+
+**两处判断记录：**
+
+1. **Session Library 的样式故意保留内联，没有进样式表。** 那一节注入的是 Arena 的**明域（light DOM）**，不是扩展的 shadow root；类选择器规则必须逐条压过 Arena 自己的 CSS 才生效，内联 `cssText` 不受影响。改为把 14 段样式字符串收进 `ui/styles/arenaSidebar.ts` 的 `ASL` 命名空间，把 14 行 import 压成 1 行——真正减重的是抽出字符串，不是改成样式表。
+
+2. **`capture.ts` 拆分暴露了跨模块共享的模块级状态。** `modelNameById`（`models` 用）和 `_lastRscTs`（`resetCaptureState` 用）原本声明在同一块，按行区间切会让两者都变成孤儿。改为每个模块自带状态、自带 `reset*()`：`rsc.ts` 新增 `resetRscState()`，由 `app/store.ts` 与 `resetCaptureState()` 并列调用。
+
+**踩坑记录：覆盖率门控一开始是红的。** 拆文件新增了未覆盖的函数，functions 从 45.97 % 掉到 **44.63 %**（< 45 % 门槛）。正确做法不是降门槛，而是给拆分暴露出来的解析器补测试——新增 `tests/unit/bootstrap-extract.test.ts`（18 个），functions 回到 45.97 %。两个探针确认测试真会咬人：把 role 判定放宽成 `typeof o.role === "string"` 会让"ignores an unknown role"变红；去掉 `depth > 8` 会让"stops descending past the depth limit"变红。
+
+**关于这批 fixture 的一个陷阱：** `__NEXT_DATA__` 本身就是一个 `<script>` 标签，而 `extractBootstrapMessages` 的第二条恢复路径会正则扫描**所有** script 标签的文本。所以凡是要断言"JSON 遍历器接受了什么"的用例，必须把 payload 放在非 script 元素里，否则扫描路径会把它再加一遍。这是生产行为，不是测试假象。
 
 ### Phase 6 — 测试规范定型
 
