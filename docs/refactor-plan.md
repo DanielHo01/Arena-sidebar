@@ -459,13 +459,37 @@ f3d511d docs: add systematic refactor plan (Phase 0-6)
 
 **遗留**：`tests/arena-mock.html` 与 `scripts/e2e-floating.cjs` 仍用旧 selector 且硬编码 `D:/edge-ai-sidebar` + `require('ws')`（`package.json` 无 `ws` 依赖），任何机器上都跑不起来 → 归入 Phase 5/6 处理。
 
-### Phase 4 — 状态收敛为 AppStore
+### Phase 4 — 状态收敛为 AppStore ✅ 已完成
 
-- [ ] 27 处模块级 `let` → 收进 `store` 或闭包
-- [ ] `store.reset(sessionId)` / `store.dispose()`
-- [ ] 所有 `setup*` 返回 Disposer；`content.ts` 维护 `disposers[]`
-- [ ] 简化 `refreshUI` 的手写 reconciler（3 个缓存字段随状态收敛自然消失）
-- **验收**：**生命周期回归测试** —— "模拟 10 次路由切换后，document 监听器数量不增长"（正是本文档 §1 P4 用过的探针手法）
+- [x] 新增 `app/store.ts`：`resetSessionState(sessionId)` + disposer 注册表
+- [x] 8 个残留状态全部纳入 reset（含 Phase 1 折叠进来的 bug 3）
+- [x] 9 个 `setup*` **全部**返回 `Disposer`；`content.ts` 用 `registerDisposer` 收集
+- [x] `refreshUI` 的 3 个缓存字段收敛为 1 个派生 key
+- **验收**：生命周期回归测试 —— **10 次路由切换后 document 监听器数量持平**
+
+**实测验收数据**
+
+| 指标 | 重构前 | 重构后 |
+| --- | --- | --- |
+| 未被 reset 的会话级状态 | 8 | **0** |
+| `setup*` 返回 `Disposer` | 3 / 9 | **9 / 9** |
+| `refreshUI` 缓存前态字段 | 3（`prevIsOpen` / `prevSearchActive` / `fab.prevRoundIds`） | **1**（`panel.lastRenderKey`） |
+| Vitest 测试 | 162 | **188** |
+| 覆盖率 statements | 31.44% | **38.58%**（`src/app` 100%、`state.ts` 100%） |
+| Bundle | 54.50 kB | 55.52 kB / gzip 17.26 |
+
+**8 个残留状态现在全部由 `resetSessionState(sessionId)` 清零**：`capture.lastRequestTs` / `lastResponseTs` / `pendingRequests` / `chatRounds`（经 `resetCaptureState`）、`historyTitles.titleCache` / `cacheLoaded`（经 `resetTitleCache`）、`folders.librarySectionOpen`（经 `resetLibrarySection`）、`panel.searchQuery` + `panel.lastRenderKey`。各模块自己暴露 reset 函数，`app/store.ts` 只负责编排——状态归谁所有，就由谁负责清。
+
+**故意不 reset 的**（并写进了代码注释）：`fab.position`（跨会话持久化）、`panel.reverseOrder`（用户偏好）、`modelNameById`（页面级，重扫要全文匹配 script）、`foldersState`（持久化索引）、`timers` / `observer` / `shadowRoot`（由 bootstrap 持有）。
+
+**验收测试确认会红，不是空转**：把 `setupHistoryContextMenu` 的幂等守卫删掉，10 次路由切换让 document 监听器从 2 涨到 **24**（3 次调用 2 → 6）；恢复守卫后持平。同样地，从 `resetSessionState` 里删掉 5 个 reset 调用会红 3 个测试——**这次探针暴露出 `resetTitleCache` / `resetLibrarySection` 原本没有断言覆盖**，已补上行为断言并复验（删掉即红：`expected 'Old Title' to contain 'New Title'`、`expected 'none' to be 'block'`）。
+
+**一处计划偏差（计划里的预期是错的）**：计划写"3 个缓存字段随状态收敛**自然消失**"。实际不会——任何 reconciler 都必须和某个前态比较。真正能做的是把 3 个各自为政的 ad-hoc 字段收敛成 1 个派生值 `renderKey()`（纯函数，`core/renderKey.ts`，10 个测试）。收敛过程还顺带修掉两个真 bug：
+
+1. 旧 fast-path 只比较**轮数 + 最后一个 id**，所以 `["a","b","c"] → ["z","y","c"]`（中间轮变了）被判定为"没变化"，面板继续显示过期行。
+2. `reverseOrder` **完全不在比较范围内**，所以在对话未变时切换排序会命中 fast-path 而不重渲染。
+
+**teardown 有了真实消费者**：bootstrap 里 `window.addEventListener("pagehide", disposeAll, { once: true })`，注册表现在拥有本扩展装过的每一个监听器和定时器。
 
 ### Phase 5 — UI 层拆分（用户要求的"文件拆解美化"）
 

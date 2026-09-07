@@ -4,7 +4,7 @@
 //   reconcileList       — diffs round list and updates DOM
 //   setupScrollHighlight — attaches scroll-based active round tracking
 
-import type { SidebarRound } from "../types";
+import type { Disposer, SidebarRound } from "../types";
 import { hiddenRoundIds } from "../rounds";
 import { scrollToRound, getMessagesForRound } from "../conversationStore";
 import { panel } from "../state";
@@ -26,10 +26,12 @@ export function refreshCurrentHighlight(list: HTMLElement | null) {
 	}
 }
 
-export function setupScrollHighlight(list: HTMLElement | null) {
-	if (!list) return;
+export function setupScrollHighlight(
+	list: HTMLElement | null,
+): Disposer | undefined {
+	if (!list) return undefined;
 	let ticking = false;
-	list.addEventListener("scroll", () => {
+	const onScroll = () => {
 		if (ticking) return;
 		ticking = true;
 		requestAnimationFrame(() => {
@@ -52,7 +54,9 @@ export function setupScrollHighlight(list: HTMLElement | null) {
 			}
 			ticking = false;
 		});
-	});
+	};
+	list.addEventListener("scroll", onScroll);
+	return () => list.removeEventListener("scroll", onScroll);
 }
 
 // ─── List reconciliation ─────────────────────────────────────────────────────────────

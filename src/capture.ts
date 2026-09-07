@@ -6,7 +6,12 @@
 //   chatRounds      — Map<sessionId, CapturedRound>  (raw capture data)
 //   modelNameById   — Map<modelId, modelName>
 
-import type { ChatRequest, ChatResponse, CapturedRound } from "./types";
+import type {
+	ChatRequest,
+	ChatResponse,
+	CapturedRound,
+	Disposer,
+} from "./types";
 import { addCapturedMessage } from "./conversationStore";
 
 // ─── DOM dataset keys (written by inject-hook.js in main world) ──────────────────────
@@ -20,6 +25,25 @@ const pendingRequests = new Map<string, ChatRequest>();
 export const modelNameById = new Map<string, string>();
 let lastRequestTs = 0;
 let lastResponseTs = 0;
+
+/**
+ * Clear per-session capture state on a route change.
+ *
+ * This was one of the 8 residual states: nothing cleared it, so switching
+ * sessions left `pendingRequests` holding the PREVIOUS session's unfinished
+ * request. When the new session's response arrived it paired against that stale
+ * request, cross-binding two conversations.
+ *
+ * `modelNameById` is deliberately NOT cleared -- model names are page-scoped,
+ * not session-scoped, and re-harvesting them costs a full script-text scan.
+ */
+export function resetCaptureState(): void {
+	lastRequestTs = 0;
+	lastResponseTs = 0;
+	_lastRscTs = 0;
+	pendingRequests.clear();
+	chatRounds.clear();
+}
 
 // ─── Chat capture ──────────────────────────────────────────────────────────────────
 
@@ -121,8 +145,8 @@ let _lastRscTs = 0; // 防重入
  * Setup CustomEvent listener for Arena's RSC stream responses.
  * Call once from content.ts setup().
  */
-export function setupRscCapture(): void {
-	if (_rscHandler) return;
+export function setupRscCapture(): Disposer {
+	if (_rscHandler) return () => {};
 	_rscHandler = (ev: Event) => {
 		const raw = (ev as CustomEvent<string>).detail;
 		if (!raw) return;
@@ -179,8 +203,13 @@ export function setupRscCapture(): void {
 
 		// Sprint 2.6: 如果 RSC 包含消息数据，在这里 parse → canonical messages → store
 	};
-	document.documentElement.addEventListener("__aiSidebarRsc", _rscHandler);
+	const handler = _rscHandler;
+	document.documentElement.addEventListener("__aiSidebarRsc", handler);
 	console.log("[AI Sidebar] RSC capture: listening for __aiSidebarRsc");
+	return () => {
+		document.documentElement.removeEventListener("__aiSidebarRsc", handler);
+		if (_rscHandler === handler) _rscHandler = null;
+	};
 }
 
 // ─── Model name harvesting ────────────────────────────────────────────────────────

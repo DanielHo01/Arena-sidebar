@@ -10,19 +10,23 @@ export const cachedElements = new Map<string, Element>();
 export const panel = {
 	isOpen: false,
 	reverseOrder: true,
-	prevIsOpen: false,
 	searchQuery: "",
 	currentRoundIdx: 0,
-	prevSearchActive: false,
 	highlightInitialized: false,
 	isDragging: false,
+	/**
+	 * The last renderKey() refreshUI produced. Replaces the three ad-hoc
+	 * prev-state fields (prevIsOpen, prevSearchActive, fab.prevRoundIds) that
+	 * each tracked one slice of "what did I last render" and disagreed with
+	 * each other about what counted as a change.
+	 */
+	lastRenderKey: "",
 };
 
 // ─── FAB state ────────────────────────────────────────────────────────────────────
 
 export const fab = {
 	position: null as { x: number; y: number } | null,
-	prevRoundIds: [] as string[],
 };
 
 // ─── Capture state ───────────────────────────────────────────────────────────────

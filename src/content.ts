@@ -26,13 +26,13 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 //   ui/modals.ts    — export/summary modals
 //   folders.ts          — session folder management
 
-import { extractMessages, resetExtractState } from "./extract";
+import { extractMessages } from "./extract";
 import {
 	conversationStore,
 	refreshStore,
 	extractBootstrapMessages,
 } from "./conversationStore";
-import { panel, fab, timers, cachedElements } from "./state";
+import { panel, fab, timers } from "./state";
 import { pollCaptures, setupRscCapture } from "./capture";
 import {
 	initFolders,
@@ -53,12 +53,16 @@ import {
 } from "./ui/panel";
 import { setupHistoryTitleEditing } from "./historyTitles";
 import { getSessionId, isSessionRoute, routeKey } from "./platform/route";
+import { SCROLL_CONTAINER_SELECTOR } from "./platform/arenaDom";
+import { renderKey } from "./core/renderKey";
+import type { Disposer } from "./types";
 import { storageGet } from "./platform/storage";
 import {
-	isPreScrollActive,
-	resetPreScroll,
-	startPreScroll,
-} from "./features/prescroll";
+	disposeAll,
+	registerDisposer,
+	resetSessionState as appResetSessionState,
+} from "./app/store";
+import { isPreScrollActive, startPreScroll } from "./features/prescroll";
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close
@@ -66,8 +70,11 @@ import {
 // Enter        — scroll to selected round
 // Esc          — close panel
 
-function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
-	document.addEventListener("keydown", (e) => {
+function setupKeyboardShortcuts(
+	shadowRoot: ShadowRoot,
+	refreshUI: () => void,
+): Disposer {
+	const onKeydown = (e: KeyboardEvent) => {
 		// Alt+S — toggle panel (always works)
 		if (e.altKey && (e.key === "s" || e.key === "S")) {
 			e.preventDefault();
@@ -131,7 +138,9 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 			refreshUI();
 			return;
 		}
-	});
+	};
+	document.addEventListener("keydown", onKeydown);
+	return () => document.removeEventListener("keydown", onKeydown);
 }
 
 // ─── Route-change detection for SPA ────────────────────────────────────────────────
@@ -139,14 +148,14 @@ function setupKeyboardShortcuts(shadowRoot: ShadowRoot, refreshUI: () => void) {
 let lastRouteKey = "";
 let isFirstRender = true; // Sprint 3.1: skip debounce on first render
 
+/**
+ * Reset every session-scoped value and adopt the current route.
+ *
+ * The actual reset lives in app/store.ts so it can be tested; this wrapper only
+ * supplies the session id and refreshes the local route key.
+ */
 function resetSessionState(): void {
-	resetExtractState();
-	resetPreScroll();
-	cachedElements.clear();
-	conversationStore.reset();
-	panel.currentRoundIdx = 0;
-	panel.highlightInitialized = false;
-	panel.isOpen = isSessionRoute(location.pathname); // Sprint 3.1: /c/ defaults to open
+	appResetSessionState(getSessionId(location.pathname));
 	lastRouteKey = routeKey(location.pathname, location.search);
 }
 
@@ -172,7 +181,10 @@ async function rebuildForCurrentRoute(): Promise<void> {
 
 let observer: MutationObserver | null = null;
 
-function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
+function setupObserver(
+	_shadowRoot: ShadowRoot,
+	refreshUI: () => void,
+): Disposer {
 	if (observer) observer.disconnect();
 	observer = new MutationObserver(() => {
 		if (panel.isDragging) return;
@@ -216,18 +228,24 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 	});
 	// P2 fix: observe only the chat container, not the entire document.body.
 	// Cascade fallback: precise → main → body (avoids missing messages on structural changes).
-	const chatContainer = document.querySelector(
-		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-	);
+	const chatContainer = document.querySelector(SCROLL_CONTAINER_SELECTOR);
 	const target =
 		chatContainer ?? document.querySelector("main") ?? document.body;
 	observer.observe(target, { childList: true, subtree: true });
+	return () => {
+		if (observer) {
+			observer.disconnect();
+			observer = null;
+		}
+	};
 }
 
 // ─── Periodic timers ───────────────────────────────────────────────────────────────────────
 
-function setupPeriodicPush(refreshUI: () => void) {
-	if (timers.pollInterval !== null || timers.refreshInterval !== null) return;
+function setupPeriodicPush(refreshUI: () => void): Disposer {
+	if (timers.pollInterval !== null || timers.refreshInterval !== null) {
+		return () => {};
+	}
 	timers.pollInterval = setInterval(() => {
 		if (!panel.isDragging) {
 			pollCaptures();
@@ -246,6 +264,12 @@ function setupPeriodicPush(refreshUI: () => void) {
 			}
 		}
 	}, 30000);
+	return () => {
+		if (timers.pollInterval !== null) clearInterval(timers.pollInterval);
+		if (timers.refreshInterval !== null) clearInterval(timers.refreshInterval);
+		timers.pollInterval = null;
+		timers.refreshInterval = null;
+	};
 }
 
 // ─── Main render ─────────────────────────────────────────────────────────────────────────
@@ -261,26 +285,29 @@ function refreshUI() {
 	const newIds = storeRounds.map((r) => r.id);
 	const msgCount = storeMessages.length;
 
-	// Fast-path: nothing structurally changed AND same UI mode AND no search active.
+	const key = renderKey({
+		isOpen: panel.isOpen,
+		searchQuery: panel.searchQuery,
+		reverseOrder: panel.reverseOrder,
+		roundIds: newIds,
+	});
+
+	// Fast-path: nothing the rendered output depends on has changed, and the
+	// panel DOM is actually there. The no-search guard is kept from the original:
+	// while a search is active the list is filtered on every call, and it is
+	// cheaper to re-render than to reason about highlight state.
 	if (
 		!panel.searchQuery &&
-		!panel.prevSearchActive &&
-		newIds.length === fab.prevRoundIds.length &&
-		newIds[newIds.length - 1] ===
-			fab.prevRoundIds[fab.prevRoundIds.length - 1] &&
-		panel.isOpen === panel.prevIsOpen &&
+		key === panel.lastRenderKey &&
 		shadowRoot.querySelector(".panel")
 	) {
 		ensureStyles(shadowRoot);
 		const titleEl = shadowRoot.querySelector(".panel-title");
 		if (titleEl) titleEl.textContent = storeRounds.length + " loaded rounds";
-		fab.prevRoundIds = newIds;
 		return;
 	}
 
-	fab.prevRoundIds = newIds;
-	panel.prevIsOpen = panel.isOpen;
-	panel.prevSearchActive = !!panel.searchQuery;
+	panel.lastRenderKey = key;
 
 	ensureStyles(shadowRoot);
 
@@ -381,7 +408,8 @@ function ensureUI() {
 	try {
 		refreshUI();
 		void loadFabPosition();
-		setupKeyboardShortcuts(shadowRoot, refreshUI);
+		// ensureUI is idempotent (guarded on shadowRoot), so this runs once.
+		registerDisposer(setupKeyboardShortcuts(shadowRoot, refreshUI));
 	} catch (e) {
 		console.error("[AI Sidebar] refreshUI/loadFabPosition failed:", e);
 	}
@@ -426,22 +454,26 @@ try {
 		initFolders()
 			.then(() => migrateHistoryTitles()) // H5: one-time migration historyTitle_* → sessionMeta
 			.catch(() => {}); // fire-and-forget
-		setupFoldersStorageSync(); // Phase 10A: listen for cross-tab storage changes
-		setupSessionMetaSync(); // Phase 3: folders subscribes to store changes
+		// Phase 4: every setup that attaches a listener hands its teardown to the
+		// registry, so there is one place to tear the whole extension down.
+		registerDisposer(setupFoldersStorageSync()); // Phase 10A: cross-tab storage changes
+		registerDisposer(setupSessionMetaSync()); // Phase 3: folders subscribes to store changes
+		registerDisposer(setupHistoryContextMenu()); // Phase 10A: right-click menu on history links
+		registerDisposer(setupHistoryTitleEditing()); // restore/rename custom history titles
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),
 		);
-		// Phase 10A: wire right-click context menu to Arena history links
-		setupHistoryContextMenu();
-		// Restore custom history titles immediately (not only after chat-area mutations)
-		setupHistoryTitleEditing();
 		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
 		if (shadowRoot) {
-			setupObserver(shadowRoot, refreshUI);
-			setupPeriodicPush(refreshUI);
-			setupRscCapture(); // Sprint 2.5: listen for Arena's RSC stream responses
+			registerDisposer(setupObserver(shadowRoot, refreshUI));
+			registerDisposer(setupPeriodicPush(refreshUI));
+			// Sprint 2.5: listen for Arena's RSC stream responses
+			registerDisposer(setupRscCapture());
+			// Teardown hook: the registry now owns every listener and timer this
+			// extension installed, so leaving the page releases all of it.
+			window.addEventListener("pagehide", disposeAll, { once: true });
 			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
 			startPreScroll(() => {
 				// After pre-scroll: extract + rebuild for current route.

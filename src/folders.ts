@@ -199,6 +199,17 @@ const LIBRARY_SECTION_ATTR = "data-ai-sidebar-arena-library-section";
 let librarySectionOpen = false;
 
 /**
+ * Close the Session Library section on a route change.
+ *
+ * Residual state: the flag survived the route change while Arena re-rendered
+ * its sidebar and dropped the injected section, so storage-sync callbacks kept
+ * taking the "section is open, re-render it" branch against a detached node.
+ */
+export function resetLibrarySection(): void {
+	librarySectionOpen = false;
+}
+
+/**
  * Build the collapsible Session Library section container.
  * Injects inline into Arena's quick-nav area (between Child 2 and Child 3).
  */
