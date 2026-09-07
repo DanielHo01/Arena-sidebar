@@ -30,9 +30,8 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 
 - ✅ **导出对话** — JSON / Markdown / 永久链接
 - ✅ **AI 摘要提示词** — 为每轮生成结构化摘要
-- ✅ 捕获 API 请求/响应
-- ✅ API 配置捕获（URL、headers、请求体示例）
-- ✅ WebSocket 事件捕获
+- ✅ 捕获 chat 请求/响应（配对成轮次）
+- ✅ 捕获 Arena 的 RSC 流式响应
 
 ---
 
@@ -133,14 +132,14 @@ D:\edge-ai-sidebar\
 
 ### 消息提取策略
 
-12 策略 DOM 选择器，覆盖：
+`src/extract.ts` 里两个具名选择器，各管一侧：
 
-- ChatGPT-style（`bg-surface-raised` 类）
-- Arena-class（`bg-surface-primary` + `flex-col` 类）
-- Arena-data-role（`data-role="user/assistant"` 属性）
-- Edge-cases（aria-hidden + button 过滤）
+- `USER_MESSAGE_SELECTOR` — `main [class*="bg-surface-raised"][class*="rounded-lg"]`，排除 `w-4` / `inline-flex`
+- `ASSISTANT_MESSAGE_SELECTOR` — `main [class*="bg-surface-primary"][class*="flex-col"][class*="overflow-hidden"]`
 
-自动递归穿透 Shadow DOM，防 React/Vue 组件隔离。
+命中后递归穿透 Shadow DOM，防 React/Vue 组件隔离。
+
+> 早期文档写的"12 策略选择器"已不存在；当前实现就是上面这两条。
 
 ### 导出对话
 
@@ -208,18 +207,30 @@ npm run test:src      # 仅真实源码测试（3 suites，24 assertions）
 
 ### 自定义 selectors
 
-如果默认 12 个 selector 不够，编辑 `src/content.ts` 顶部的 `MESSAGE_SELECTORS` 数组，加适合你 DOM 结构的 selector，然后 `npm run build`。
+编辑 `src/extract.ts` 里的 `USER_MESSAGE_SELECTOR` / `ASSISTANT_MESSAGE_SELECTOR` 两个常量，然后 `npm run build`。
+
+（早期文档提到的 `src/content.ts` 顶部 `MESSAGE_SELECTORS` 数组已不存在。）
 
 ### Debug 模式
 
 在 arena.ai 页面 F12 → Console：
 
-- `[AI Sidebar Debug] N sample elements ...` — 1.5s 后打印抓到元素的 attributes/classes
-- `[AI Sidebar] WS event:` — WebSocket 事件
-- `[AI Sidebar] Chat request:` — 捕获的 chat 请求
-- `[AI Sidebar] Chat round COMPLETE/streaming:` — 捕获的 chat 响应
-- 复制 `__aiSidebarSamples` 看实际 DOM 结构
-- 复制 `__chatRounds` 看捕获的 rounds
+所有日志统一用 `[AI Sidebar]` 前缀，常见的几条：
+
+- `[AI Sidebar] content script loaded, modules initializing...` — 内容脚本已加载
+- `[AI Sidebar] preScroll: totalH= ... step= ...` / `preScroll: done, messages=N` — 虚拟滚动预加载进度
+- `[AI Sidebar] RSC capture: listening for __aiSidebarRsc` — RSC 捕获已挂上
+- `[AI Sidebar] RSC captured: status=...` — 收到一条 RSC 响应
+- `[AI Sidebar] store: total messages=N rounds=M` — 重建后的轮次数
+
+面板自身的状态挂在宿主元素上，可直接读：
+
+```js
+document.getElementById("__edge_ai_sidebar_host").dataset
+// { aiSidebarOpen, aiSidebarMode, aiSidebarRounds, aiSidebarMsgs }
+```
+
+> 早期文档列的 `__aiSidebarSamples` / `__chatRounds` 全局变量和 `[AI Sidebar Debug]` 日志都已移除——`window.__aiSidebar*` 属性在 Phase 4 被换成模块内的 `timers` 引用（见 `src/state.ts`）。
 
 ---
 

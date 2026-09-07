@@ -6,10 +6,6 @@
 import type { SidebarMessage } from "./types";
 import { cachedElements } from "./state";
 
-// P0 #1 — cooldown prevents expensive full-DOM scans on every MutationObserver trigger.
-// P0 #1 — cooldown prevents expensive full-DOM scans on every MutationObserver trigger.
-export const EXTRACT_COOLDOWN_MS = 800;
-
 // ─── DOM change detection ─────────────────────────────────────────────────────────────
 // Avoid re-extracting when DOM hasn't changed since last extract.
 // Uses content-aware signature: element count + role sequence + first/last content.
@@ -21,7 +17,9 @@ export function resetExtractState(): void {
 	lastExtractSig = "";
 }
 
-function domSignature(all: Array<{ el: Element; role: "user" | "assistant" }>): string {
+function domSignature(
+	all: Array<{ el: Element; role: "user" | "assistant" }>,
+): string {
 	if (all.length === 0) return "empty";
 	const first = all.find((x) => x.role === "user");
 	const last = [...all].reverse().find((x) => x.role === "assistant");
@@ -164,7 +162,7 @@ function collectAllElements(): Array<{
 				if (!isLikelyRealMessage(el, "user")) return;
 				all.push({ el, role: "user" });
 			});
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — selector may throw on detached nodes */
 		}
 		try {
@@ -172,7 +170,7 @@ function collectAllElements(): Array<{
 				if (!isLikelyRealMessage(el, "assistant")) return;
 				all.push({ el, role: "assistant" });
 			});
-		} catch (_e) {
+		} catch {
 			/* intentionally empty — selector may throw on detached nodes */
 		}
 		const anyRoot = root as Element & { shadowRoot?: ShadowRoot | null };
@@ -197,6 +195,24 @@ function collectAllElements(): Array<{
 
 // ─── Main extraction ──────────────────────────────────────────────────────────────
 
+/**
+ * Scan the page and return the messages currently rendered.
+ *
+ * CONTRACT — an empty array is deliberately ambiguous, and callers must not read
+ * meaning into it. It is returned both when the DOM has not changed since the
+ * last scan (the fast path below) and when the page genuinely holds no messages.
+ *
+ * That is safe today because both call sites feed the result straight into
+ * refreshStore(), which upserts and returns early on empty input — so "nothing
+ * changed" and "nothing there" both correctly produce "leave the store alone".
+ * Nothing is ever cleared.
+ *
+ * If a future caller needs to tell those two apart (for example to detect a
+ * cleared conversation), it must ask separately rather than branch on length:
+ * change this signature to a discriminated result at that point, and update
+ * both call sites together. Do not "fix" the ambiguity by returning null for the
+ * unchanged case — the current callers would then skip legitimate empty scans.
+ */
 export function extractMessages(): SidebarMessage[] {
 	// P1 fix: skip if DOM hasn't changed since last extract (avoids O(n) rebuild).
 	// Collect elements ONCE — the signature check reuses the same batch instead of

@@ -1,13 +1,35 @@
 // Modal dialogs — export, summary, and download.
+//
+// This file is DOM only. Every piece of text it shows is produced by
+// core/serialize.ts, which takes the captured rounds and the model-name
+// resolver as parameters instead of reaching for the singletons.
 // Public exports:
-//   buildSummaryPrompt  — builds the AI summary prompt text
 //   exportConversation — triggers the export modal
-//   summarizeRounds    — async entry point for the summary modal
+//   summarizeRounds    — entry point for the summary modal
 
-import type { SidebarMessage, CapturedRound } from "../types";
+import type { SidebarMessage } from "../types";
+import {
+	buildJson,
+	buildMarkdown,
+	buildSummaryPrompt,
+	type SerializeInput,
+} from "../core/serialize";
 import { chatRounds, lookupModelName } from "../capture";
-import { computeRounds } from "../conversationStore";
-import { capture } from "../state";
+import { getSessionId } from "../platform/route";
+import { h } from "./dom";
+import { copyText } from "../platform/clipboard";
+
+/** Assemble the pure serialize inputs from the live singletons. */
+function serializeInput(sessionId: string): SerializeInput {
+	return {
+		sessionId,
+		url: location.href,
+		exportedAt: new Date().toISOString(),
+		messages: [],
+		captured: Array.from(chatRounds.values()),
+		resolveModelName: lookupModelName,
+	};
+}
 
 // ─── Download helper ─────────────────────────────────────────────────────────────────
 
@@ -19,59 +41,6 @@ function downloadBlob(filename: string, mime: string, content: string) {
 	a.download = filename;
 	a.click();
 	URL.revokeObjectURL(url);
-}
-
-// ─── Summary prompt builder ──────────────────────────────────────────────────────────────
-
-export function buildSummaryPrompt(messages: SidebarMessage[]): string {
-	const userIdxList: number[] = [];
-	messages.forEach((m, idx) => {
-		if (m.role === "user") userIdxList.push(idx);
-	});
-	if (userIdxList.length === 0) return "";
-	const capturedByUser = new Map<string, CapturedRound>();
-	for (const r of chatRounds.values()) {
-		if (r.request.content)
-			capturedByUser.set(r.request.content.slice(0, 200), r);
-	}
-	const aResolved = Array.from(chatRounds.values())
-		.map((r) => lookupModelName(r.request.modelAId))
-		.filter(Boolean);
-	const bResolved = Array.from(chatRounds.values())
-		.map((r) => lookupModelName(r.request.modelBId))
-		.filter(Boolean);
-	const aLabel = aResolved[0] || "助手 A";
-	const bLabel = bResolved[0] || "助手 B";
-	let text =
-		'请用中文为以下对话的每一轮生成一个 JSON 总结。每个 round 一个对象，包含 title (≤40 字要点)、summary (≤100 字简述)。\n输出格式：{"rounds":[{"id":"...","title":"...","summary":"..."}]}\n\n';
-	let leadContext = "";
-	for (let i = 0; i < userIdxList[0]; i++) {
-		if (messages[i].role === "assistant") {
-			leadContext += `[前置助手消息]: ${messages[i].content.slice(0, 800)}\n`;
-		}
-	}
-	if (leadContext) text += `\n=== 前置上下文 ===\n${leadContext}\n`;
-	userIdxList.forEach((userIdx, i) => {
-		const userContent = messages[userIdx].content;
-		const cap = capturedByUser.get(userContent.slice(0, 200));
-		const nextUserIdx = userIdxList[i + 1] ?? messages.length;
-		const assistants = messages
-			.slice(userIdx + 1, nextUserIdx)
-			.filter((m) => m.role === "assistant");
-		const userTxt = userContent.slice(0, 800);
-		text += `\n=== Round ${i + 1} ===\n`;
-		text += `[用户问题]: ${userTxt}\n`;
-		if (assistants.length > 0) {
-			assistants.forEach((a, idx) => {
-				text += `[回答 ${idx + 1}]: ${a.content.slice(0, 1500)}\n`;
-			});
-		} else if (cap) {
-			text += `[${aLabel} 回答]: ${cap.response.aText.slice(0, 1500)}\n`;
-			if (cap.request.modelBId)
-				text += `[${bLabel} 回答]: ${cap.response.bText.slice(0, 1500)}\n`;
-		}
-	});
-	return text;
 }
 
 // ─── Export modal ─────────────────────────────────────────────────────────────────────
@@ -100,20 +69,10 @@ export function showExportModal(
 		btn.onclick = onclick;
 		return btn;
 	};
+	actions.appendChild(makeBtn("📋 Copy JSON", () => void copyText(json)));
+	actions.appendChild(makeBtn("📋 Copy Markdown", () => void copyText(md)));
 	actions.appendChild(
-		makeBtn("📋 Copy JSON", () =>
-			navigator.clipboard.writeText(json).then(() => {}),
-		),
-	);
-	actions.appendChild(
-		makeBtn("📋 Copy Markdown", () =>
-			navigator.clipboard.writeText(md).then(() => {}),
-		),
-	);
-	actions.appendChild(
-		makeBtn("🔗 Copy link", () =>
-			navigator.clipboard.writeText(location.href).then(() => {}),
-		),
+		makeBtn("🔗 Copy link", () => void copyText(location.href)),
 	);
 	actions.appendChild(
 		makeBtn("💾 Download JSON", () =>
@@ -155,102 +114,96 @@ export function showExportModal(
 
 // ─── Summary modal ──────────────────────────────────────────────────────────────────────
 
-export function showSummaryModal(shadowRoot: ShadowRoot, promptText: string) {
-	let modal = shadowRoot.querySelector(".summary-modal") as HTMLElement | null;
-	if (modal) modal.remove();
-	modal = document.createElement("div");
-	modal.className = "summary-modal";
-	const box = document.createElement("div");
-	box.className = "summary-box";
-	const title = document.createElement("div");
-	title.className = "summary-title";
-	const roundCount = (promptText.match(/=== Round \d+ ===/g) || []).length;
-	title.textContent =
-		"✨ Summary prompt — " +
-		roundCount +
-		" rounds · " +
-		promptText.length +
-		" chars";
-	const actions = document.createElement("div");
-	actions.className = "summary-actions";
+/** Put the prompt into Arena's own composer by driving its controlled input. */
+function pasteIntoChat(promptText: string): void {
+	const ta = document.querySelector(
+		'textarea[name="message"], textarea[placeholder*="followup" i], textarea[placeholder*="Ask" i]',
+	) as HTMLTextAreaElement | null;
+	if (!ta) return;
+	ta.focus();
+	// React tracks value through its own setter, so assign via the prototype
+	// setter and fire `input` — a plain `.value =` would be ignored.
+	const setter = Object.getOwnPropertyDescriptor(
+		window.HTMLTextAreaElement.prototype,
+		"value",
+	)!.set!;
+	setter.call(ta, promptText);
+	ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
 
-	const makeBtn = (label: string, className: string, onclick: () => void) => {
-		const btn = document.createElement("button");
-		btn.textContent = label;
-		if (className) btn.className = className;
-		btn.onclick = onclick;
-		return btn;
-	};
+/**
+ * Open the prompt in a fresh arena.ai chat.
+ *
+ * Domain is hardcoded and the prompt is encodeURIComponent-wrapped, so no
+ * injection is possible; the origin is re-checked through the URL constructor.
+ */
+function openInNewChat(promptText: string): void {
+	const raw =
+		"https://arena.ai/?mode=direct&prompt=" +
+		encodeURIComponent(promptText.slice(0, 4000));
+	try {
+		const u = new URL(raw);
+		if (u.origin === "https://arena.ai") {
+			// pi-lens-ignore: ast-grep:no-open-redirect
+			window.open(u.href, "_blank");
+		}
+	} catch {
+		/* malformed URL — silently ignore */
+	}
+}
 
-	actions.appendChild(
-		makeBtn("📋 Copy to clipboard", "", () =>
-			navigator.clipboard.writeText(promptText).then(() => {}),
+/** The four ways to get the prompt out of the extension, plus Close. */
+function buildSummaryActions(promptText: string, onClose: () => void) {
+	const btn = (label: string, cls: string, onClick: () => void) =>
+		h(
+			"button",
+			cls ? { class: cls, text: label, onClick } : { text: label, onClick },
+		);
+	return h("div", { class: "summary-actions" }, [
+		btn("📋 Copy to clipboard", "", () => {
+			void copyText(promptText);
+		}),
+		btn("📥 Paste into current chat", "", () => pasteIntoChat(promptText)),
+		btn("🚀 Open new arena.ai chat", "primary", () =>
+			openInNewChat(promptText),
 		),
-	);
-
-	actions.appendChild(
-		makeBtn("📥 Paste into current chat", "", () => {
-			const ta = document.querySelector(
-				'textarea[name="message"], textarea[placeholder*="followup" i], textarea[placeholder*="Ask" i]',
-			) as HTMLTextAreaElement | null;
-			if (ta) {
-				ta.focus();
-				const setter = Object.getOwnPropertyDescriptor(
-					window.HTMLTextAreaElement.prototype,
-					"value",
-				)!.set!;
-				setter.call(ta, promptText);
-				ta.dispatchEvent(new Event("input", { bubbles: true }));
-			}
-		}),
-	);
-
-	// New tab: domain is hardcoded; prompt is encodeURIComponent-wrapped — no injection possible.
-	// Origin validated via URL() constructor.
-	actions.appendChild(
-		makeBtn("🚀 Open new arena.ai chat", "primary", () => {
-			const raw =
-				"https://arena.ai/?mode=direct&prompt=" +
-				encodeURIComponent(promptText.slice(0, 4000));
-			try {
-				const u = new URL(raw);
-				if (u.origin === "https://arena.ai") {
-					// pi-lens-ignore: ast-grep:no-open-redirect
-					window.open(u.href, "_blank");
-				}
-			} catch {
-				/* malformed URL — silently ignore */
-			}
-		}),
-	);
-
-	actions.appendChild(
-		makeBtn("💾 Download as .md", "", () =>
+		btn("💾 Download as .md", "", () =>
 			downloadBlob(
 				"arena-summary-prompt.md",
 				"text/markdown;charset=utf-8",
 				promptText,
 			),
 		),
+		h("button", { text: "✕ Close", onClick: onClose }),
+	]);
+}
+
+export function showSummaryModal(shadowRoot: ShadowRoot, promptText: string) {
+	shadowRoot.querySelector(".summary-modal")?.remove();
+
+	const roundCount = (promptText.match(/=== Round \d+ ===/g) || []).length;
+	const modal = h("div", { class: "summary-modal" });
+	const ta = h("textarea", {
+		class: "summary-text",
+		readOnly: true,
+		value: promptText,
+	});
+	modal.appendChild(
+		h("div", { class: "summary-box" }, [
+			h("div", {
+				class: "summary-title",
+				text:
+					"✨ Summary prompt — " +
+					roundCount +
+					" rounds · " +
+					promptText.length +
+					" chars",
+			}),
+			buildSummaryActions(promptText, () => modal.remove()),
+			ta,
+		]),
 	);
-
-	const closeBtn = document.createElement("button");
-	closeBtn.textContent = "✕ Close";
-	closeBtn.onclick = () => {
-		modal!.remove();
-	};
-	actions.appendChild(closeBtn);
-
-	const ta = document.createElement("textarea");
-	ta.className = "summary-text";
-	ta.readOnly = true;
-	ta.value = promptText;
-	ta.scrollTop = 0;
-
-	box.appendChild(title);
-	box.appendChild(actions);
-	box.appendChild(ta);
-	modal.appendChild(box);
+	// Clicking the backdrop (but not the box) dismisses.
 	modal.onclick = (e) => {
 		if (e.target === modal) modal.remove();
 	};
@@ -266,107 +219,46 @@ export function exportConversation(
 	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
-	const sid = location.pathname.match(/\/c\/([^/?]+)/)?.[1] || "";
-	const rounds = computeRounds(messages);
-	const capturedByUser = new Map<string, CapturedRound>();
-	for (const r of chatRounds.values()) {
-		if (r.request.content)
-			capturedByUser.set(r.request.content.slice(0, 200), r);
-	}
-	const userIdxList: number[] = [];
-	messages.forEach((m, idx) => {
-		if (m.role === "user") userIdxList.push(idx);
-	});
-
-	const buildJson = () => ({
-		sessionId: sid,
-		url: location.href,
-		exportedAt: new Date().toISOString(),
-		rounds: rounds.map((round, i) => {
-			const userIdx = messages.findIndex(
-				(m) => m.id === round.id && m.role === "user",
-			);
-			const userContent =
-				userIdx >= 0 ? messages[userIdx].content : round.title;
-			const cap = capturedByUser.get(userContent.slice(0, 200));
-			let assistants: SidebarMessage[] = [];
-			if (userIdx >= 0) {
-				const nextUserIdx =
-					userIdxList[userIdxList.indexOf(userIdx) + 1] ?? messages.length;
-				assistants = messages
-					.slice(userIdx + 1, nextUserIdx)
-					.filter((m) => m.role === "assistant");
-			}
-			return {
-				round: i + 1,
-				sessionId: cap ? cap.sessionId : sid,
-				user: userContent,
-				userMessageId: cap ? cap.request.userMessageId : "",
-				responses:
-					assistants.length > 0
-						? assistants.map((a) => ({ text: a.content }))
-						: cap
-							? [
-									{
-										model: "A",
-										id: cap.request.modelAId,
-										name: lookupModelName(cap.request.modelAId),
-										text: cap.response.aText,
-										reasoning: cap.response.aReasoning,
-									},
-									...(cap.request.modelBId
-										? [
-												{
-													model: "B",
-													id: cap.request.modelBId,
-													name: lookupModelName(cap.request.modelBId),
-													text: cap.response.bText,
-													reasoning: cap.response.bReasoning,
-												},
-											]
-										: []),
-								]
-							: [],
-			};
-		}),
-	});
-
-	const json = JSON.stringify(buildJson(), null, 2);
-	const md = buildJson()
-		.rounds.map((r) => {
-			const parts = [`## Round ${r.round}`, "", `**User**: ${r.user}`, ""];
-			r.responses.forEach(
-				(resp: { name?: string; text?: string }, idx: number) => {
-					const label = resp.name || "Response " + (idx + 1);
-					parts.push(`**${label}**: ${resp.text || ""}`, "");
-				},
-			);
-			return parts.join("\n");
-		})
-		.join("\n---\n\n");
-
+	const sid = getSessionId(location.pathname);
+	const input: SerializeInput = {
+		...serializeInput(sid),
+		messages,
+	};
+	const json = JSON.stringify(buildJson(input), null, 2);
+	const md = buildMarkdown(input);
 	showExportModal(shadowRoot, json, md, sid);
 }
 
 // ─── Summarize rounds ─────────────────────────────────────────────────────────────────
 
+/**
+ * Build the summary prompt for the given messages and show it.
+ *
+ * Deliberately has no re-entrancy guard. The old one set `capture.isSummarizing`
+ * around the body and cleared it in a `finally`, but this function is fully
+ * synchronous — buildSummaryPrompt and showSummaryModal both return without
+ * awaiting — so no second call can interleave and the flag could never be
+ * observed as true. It was dead state, and it lived in state.ts as the sole
+ * field of a `capture` object that has now been deleted.
+ *
+ * Re-invoking is harmless anyway: showSummaryModal removes any existing
+ * `.summary-modal` before appending, so a double click replaces rather than
+ * stacks.
+ */
 export function summarizeRounds(
 	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
-	if (capture.isSummarizing) return;
-	capture.isSummarizing = true;
-	try {
-		const prompt = buildSummaryPrompt(messages);
-		if (!prompt) {
-			showSummaryModal(
-				shadowRoot,
-				"(no rounds detected yet — wait for arena.ai to load the conversation)",
-			);
-			return;
-		}
-		showSummaryModal(shadowRoot, prompt);
-	} finally {
-		capture.isSummarizing = false;
+	const prompt = buildSummaryPrompt({
+		...serializeInput(getSessionId(location.pathname)),
+		messages,
+	});
+	if (!prompt) {
+		showSummaryModal(
+			shadowRoot,
+			"(no rounds detected yet — wait for arena.ai to load the conversation)",
+		);
+		return;
 	}
+	showSummaryModal(shadowRoot, prompt);
 }

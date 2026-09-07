@@ -1,0 +1,323 @@
+// Phase 4 acceptance: session lifecycle.
+//
+// Two properties are pinned here.
+//
+// 1. resetSessionState() clears EVERY session-scoped value. Eight of them were
+//    never cleared at all before this phase, and two of them caused real bugs:
+//    capture.pendingRequests cross-bound a previous session's unfinished
+//    request onto the new session's response, and fab.prevRoundIds made
+//    refreshUI's fast path skip the first render of the new session.
+//
+// 2. Route changes do not accumulate DOM listeners. setupHistoryContextMenu and
+//    setupHistoryTitleEditing both run again on every route change, so an
+//    unguarded setup adds a fresh document listener each time. This is the
+//    regression test the refactor plan called for: simulate N route changes and
+//    assert the listener count is flat.
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildSidebar, quickNavOf } from "../__fixtures__/arenaDom";
+import {
+	disposeAll,
+	registerDisposer,
+	resetSessionState,
+} from "../../src/app/store";
+import { conversationStore } from "../../src/conversationStore";
+import { chatRounds } from "../../src/capture";
+import {
+	foldersState,
+	setSessionCustomTitle,
+} from "../../src/features/sessions";
+import { hiddenRoundIds } from "../../src/rounds";
+import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
+import { toggleArenaSessionLibrarySection } from "../../src/ui/arenaSidebar";
+import { setupHistoryTitleEditing } from "../../src/historyTitles";
+import { fab, panel, cachedElements } from "../../src/state";
+
+// ─── Listener probe ──────────────────────────────────────────────────────────────
+// Counts live listeners on document by wrapping add/removeEventListener, which
+// is how the original audit found the leak.
+let added = 0;
+let removed = 0;
+const realAdd = document.addEventListener.bind(document);
+const realRemove = document.removeEventListener.bind(document);
+
+function installProbe() {
+	added = 0;
+	removed = 0;
+	document.addEventListener = ((...args: unknown[]) => {
+		added++;
+		return (realAdd as (...a: never[]) => void)(...(args as never[]));
+	}) as typeof document.addEventListener;
+	document.removeEventListener = ((...args: unknown[]) => {
+		removed++;
+		return (realRemove as (...a: never[]) => void)(...(args as never[]));
+	}) as typeof document.removeEventListener;
+}
+
+function uninstallProbe() {
+	document.addEventListener = realAdd;
+	document.removeEventListener = realRemove;
+}
+
+/** Arena-like sidebar with two session links. */
+function renderSessionLinks() {
+	document.body.innerHTML = `
+		<nav>
+			<a href="/c/aaa"><span>First chat</span></a>
+			<a href="/c/bbb"><span>Second chat</span></a>
+		</nav>`;
+}
+
+beforeEach(() => {
+	document.body.innerHTML = "";
+	conversationStore.reset();
+	conversationStore.sessionId = "";
+});
+
+afterEach(() => {
+	uninstallProbe();
+	disposeAll();
+	document.body.innerHTML = "";
+});
+
+describe("resetSessionState", () => {
+	it("sets the store's session id", () => {
+		resetSessionState("new-session");
+		expect(conversationStore.sessionId).toBe("new-session");
+	});
+
+	it("clears messages and rounds", () => {
+		conversationStore.messages = [{ id: "m" } as never];
+		conversationStore.rounds = [{ id: "r" } as never];
+		resetSessionState("s");
+		expect(conversationStore.messages).toHaveLength(0);
+		expect(conversationStore.rounds).toHaveLength(0);
+	});
+
+	it("clears the cached DOM element registry", () => {
+		cachedElements.set("fp-1", document.createElement("div"));
+		resetSessionState("s");
+		expect(cachedElements.size).toBe(0);
+	});
+
+	// ── the 8 residual states ──────────────────────────────────────────────
+
+	it("clears capture state, incl. the pendingRequests cross-binding bug", () => {
+		chatRounds.set("old-session", { sessionId: "old-session" } as never);
+		resetSessionState("s");
+		expect(chatRounds.size).toBe(0);
+	});
+
+	it("clears panel search and highlight state", () => {
+		panel.searchQuery = "leftover";
+		panel.currentRoundIdx = 7;
+		panel.highlightInitialized = true;
+		resetSessionState("s");
+		expect(panel.searchQuery).toBe("");
+		expect(panel.currentRoundIdx).toBe(0);
+		expect(panel.highlightInitialized).toBe(false);
+	});
+
+	it("clears the render key so the new session's first render is not skipped", () => {
+		// This replaces the fab.prevRoundIds residual state. The fast path in
+		// refreshUI compares a single renderKey now, and a stale key from the
+		// previous session would make it skip the first render entirely.
+		panel.lastRenderKey = '["stale"]';
+		resetSessionState("s");
+		expect(panel.lastRenderKey).toBe("");
+	});
+
+	it("does NOT clear the persisted FAB position", () => {
+		fab.position = { x: 12, y: 34 };
+		resetSessionState("s");
+		expect(fab.position).toEqual({ x: 12, y: 34 });
+	});
+
+	it("does NOT clear the user's sort preference", () => {
+		panel.reverseOrder = false;
+		resetSessionState("s");
+		expect(panel.reverseOrder).toBe(false);
+	});
+
+	// ── the 9th residual state, found after Phase 4 ─────────────────────────
+	//
+	// hiddenRoundIds was missed by the Phase 4 sweep. It is worse than a stale
+	// cosmetic value: round ids are NOT session-scoped. Bootstrap messages get
+	// deterministic ids ("boot-" + results.length, "boot-" + path + "-" + n) and
+	// round.id is just msg.id, so two different conversations routinely produce
+	// the same round id. Hiding a round in one session therefore hid the
+	// same-numbered round in every session visited afterwards, with no way to
+	// bring it back -- the panel has no unhide control.
+	it("clears hidden rounds, which are keyed by an id that is not session-scoped", () => {
+		hiddenRoundIds.add("boot-messages-0-0");
+		hiddenRoundIds.add("boot-3");
+		expect(hiddenRoundIds.size).toBe(2);
+
+		resetSessionState("s");
+
+		expect(hiddenRoundIds.size).toBe(0);
+	});
+});
+
+describe("disposer registry", () => {
+	it("runs every registered disposer", () => {
+		const order: string[] = [];
+		registerDisposer(() => order.push("a"));
+		registerDisposer(() => order.push("b"));
+		disposeAll();
+		expect(order).toEqual(["a", "b"]);
+	});
+
+	it("is idempotent — a second disposeAll does nothing", () => {
+		let n = 0;
+		registerDisposer(() => n++);
+		disposeAll();
+		disposeAll();
+		expect(n).toBe(1);
+	});
+
+	it("a throwing disposer does not stop the others", () => {
+		let reached = 0;
+		registerDisposer(() => {
+			throw new Error("bad disposer");
+		});
+		registerDisposer(() => reached++);
+		disposeAll();
+		expect(reached).toBe(1);
+	});
+
+	it("the returned handle disposes just that one", () => {
+		let a = 0;
+		let b = 0;
+		const offA = registerDisposer(() => a++);
+		registerDisposer(() => b++);
+		offA();
+		disposeAll();
+		expect([a, b]).toEqual([0, 1]);
+	});
+});
+
+describe("route changes do not leak DOM listeners", () => {
+	it("10 route changes leave the document listener count unchanged", () => {
+		renderSessionLinks();
+		installProbe();
+
+		// First route: the setups legitimately attach their listeners.
+		setupHistoryContextMenu();
+		setupHistoryTitleEditing();
+		const baseline = added - removed;
+
+		for (let i = 0; i < 10; i++) {
+			resetSessionState("session-" + i);
+			// content.ts re-runs both of these on every route change.
+			setupHistoryContextMenu();
+			setupHistoryTitleEditing();
+		}
+
+		expect(added - removed).toBe(baseline);
+	});
+
+	it("the context menu attaches at most one document click listener", () => {
+		renderSessionLinks();
+		installProbe();
+		setupHistoryContextMenu();
+		const first = added;
+		setupHistoryContextMenu();
+		setupHistoryContextMenu();
+		expect(added).toBe(first);
+	});
+});
+
+describe("resetSessionState clears the remaining residual states", () => {
+	// These are module-private, so they are asserted behaviourally. Removing
+	// resetLibrarySection() from resetSessionState must fail a test here, and
+	// removing resetHiddenRounds() must fail the one in the block above -- both
+	// were verified by deleting them.
+	//
+	// The title assertions in this block no longer pin a reset: historyTitles.ts
+	// used to cache titles in a module-level Map, and resetTitleCache() was needed
+	// to stop a route change from serving the previous session's titles. That cache
+	// is gone (it caused a context-menu rename to be reverted), so restoreTitle()
+	// now reads foldersState directly and there is nothing left to clear.
+
+	const LIBRARY_ATTR = "data-ai-sidebar-arena-library-section";
+
+	function meta(title: string) {
+		return {
+			sessionId: "aaa",
+			title,
+			folderId: "inbox",
+			createdAt: 0,
+			updatedAt: 0,
+		};
+	}
+
+	it("a route change re-reads the title from foldersState", () => {
+		foldersState.sessions.set("aaa", meta("Old Title"));
+		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
+		setupHistoryTitleEditing();
+		expect(document.querySelector("a")!.textContent).toContain("Old Title");
+
+		// Arena's own title changes, then the user navigates.
+		foldersState.sessions.set("aaa", meta("New Title"));
+		resetSessionState("aaa");
+		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
+		setupHistoryTitleEditing();
+
+		expect(document.querySelector("a")!.textContent).toContain("New Title");
+		expect(document.querySelector("a")!.textContent).not.toContain("Old Title");
+	});
+
+	it("a context-menu rename survives the next title restore", () => {
+		// Regression: the context-menu rename wrote foldersState and the link's DOM
+		// but not titleCache, while restoreTitle() trusted the cache first. Since
+		// loop.ts re-runs setupHistoryTitleEditing() on every debounced DOM change,
+		// the stale cache silently reverted the rename a few hundred ms later --
+		// the user typed a new name, saw it take, then watched it flip back.
+		//
+		// The double-click path in historyTitles.ts did not have this bug because it
+		// called cacheTitle() after saving. That divergence is the tell: two write
+		// paths for one operation, only one of which knew about the cache.
+		foldersState.sessions.set("aaa", meta("Old Title"));
+		// Hermetic start: the previous test in this file leaves titleCache populated,
+		// and beforeEach does not clear it. Without this the test would fail on its
+		// first assertion for an unrelated reason (a leaked cache entry) rather than
+		// exercising the rename path it is meant to pin.
+		resetSessionState("aaa");
+		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
+		setupHistoryTitleEditing();
+		const link = document.querySelector("a")!;
+		expect(link.textContent).toContain("Old Title");
+
+		// Exactly what contextMenu.ts's rename item does on commit.
+		setSessionCustomTitle("aaa", "New Title");
+		link.title = "New Title";
+		const span = link.querySelector("span");
+		if (span) span.textContent = "New Title";
+		expect(link.textContent).toContain("New Title");
+
+		// loop.ts:97 re-runs this on every debounced mutation.
+		setupHistoryTitleEditing();
+
+		expect(link.textContent).toContain("New Title");
+		expect(link.textContent).not.toContain("Old Title");
+	});
+
+	it("a route change closes the Session Library section", () => {
+		// Arena sidebar skeleton — shared fixture, see tests/__fixtures__/arenaDom.ts.
+		const wrapper = buildSidebar();
+		const quickNav = quickNavOf(wrapper);
+		const section = document.createElement("div");
+		section.setAttribute(LIBRARY_ATTR, "1");
+		section.style.display = "none";
+		quickNav.appendChild(section);
+		document.body.appendChild(wrapper);
+
+		toggleArenaSessionLibrarySection(); // open
+		expect(section.style.display).toBe("block");
+
+		resetSessionState("s");
+		toggleArenaSessionLibrarySection(); // flag was reset, so this opens again
+
+		expect(section.style.display).toBe("block");
+	});
+});

@@ -1,0 +1,12 @@
+# Build output / deps
+dist
+node_modules
+package-lock.json
+
+# Binary assets
+public/icons
+*.png
+
+# Prose docs — deliberately NOT auto-formatted:
+# CJK tables and hand-tuned alignment make prettier's markdown pass pure noise.
+*.md

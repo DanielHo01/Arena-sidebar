@@ -8,21 +8,63 @@
 // The store maintains canonical messages + computed rounds.
 // DOM binding runs as a separate pass: fingerprint → domId.
 
-import type { SidebarMessage, SidebarRound, MessageOrigin } from "./types";
-import { cachedElements, contextValid, invalidateContext } from "./state";
-import { upsertSessionMetaFromStore } from "./folders";
+import type {
+	Disposer,
+	MessageOrigin,
+	SidebarMessage,
+	SidebarRound,
+} from "./types";
+import { cachedElements } from "./state";
+import { storageGet, storageSet } from "./platform/storage";
+import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
+import { computeRounds } from "./core/rounds";
 
-// ─── Stable fingerprint for content matching ────────────────────────────────────────
+// ─── Change subscription ──────────────────────────────────────────────────────────────
+//
+// This is the seam that keeps the data layer from importing the UI layer.
+// conversationStore used to call folders.upsertSessionMetaFromStore() directly
+// after each successful write, which made the data layer depend on 760 lines of
+// CRUD + Arena DOM injection + context menu + inline CSS. It now emits a
+// snapshot and folders.ts subscribes (setupSessionMetaSync).
 
-function fingerprint(text: string): string {
-	// Normalize: trim, collapse whitespace, lowercase.
-	// Use first 200 chars as stable key.
-	const normalized = text
-		.trim()
-		.replace(/\s+/g, " ")
-		.toLowerCase()
-		.slice(0, 200);
-	return "fp-" + normalized.length + "-" + normalized.slice(0, 80);
+/** What a subscriber needs to update the session index. No DOM, no storage. */
+export interface StoreSnapshot {
+	sessionId: string;
+	messageCount: number;
+	roundCount: number;
+	/** First round's title, for callers that need a fallback name. */
+	firstRoundTitle: string;
+}
+
+type StoreListener = (snapshot: StoreSnapshot) => void;
+const storeListeners = new Set<StoreListener>();
+
+/** Subscribe to successful saves. Returns a Disposer. */
+export function onStoreChange(listener: StoreListener): Disposer {
+	storeListeners.add(listener);
+	return () => {
+		storeListeners.delete(listener);
+	};
+}
+
+/**
+ * Notify subscribers. A listener that throws is logged and skipped: one broken
+ * subscriber must not abort the save or starve the others.
+ */
+function emitStoreChange(): void {
+	const snapshot: StoreSnapshot = {
+		sessionId: conversationStore.sessionId,
+		messageCount: conversationStore.messages.length,
+		roundCount: conversationStore.rounds.length,
+		firstRoundTitle: conversationStore.rounds[0]?.title ?? "",
+	};
+	for (const listener of storeListeners) {
+		try {
+			listener(snapshot);
+		} catch (error) {
+			console.warn("[AI Sidebar] store listener threw:", error);
+		}
+	}
 }
 
 // ─── Conversation store ─────────────────────────────────────────────────────────────
@@ -48,10 +90,8 @@ export const conversationStore = {
 	},
 
 	/** Save current messages + rounds to chrome.storage.local (keyed by sessionId). */
-	saveToStorage(): void {
-		if (!contextValid) return;
+	async saveToStorage(): Promise<void> {
 		if (!this.sessionId || this.messages.length === 0) return;
-		if (typeof chrome === "undefined" || !chrome.storage) return;
 		const key = `edge-ai-sidebar:session:${this.sessionId}`;
 		const payload = {
 			messages: this.messages,
@@ -59,35 +99,10 @@ export const conversationStore = {
 			lastSavedAt: Date.now(),
 			sessionId: this.sessionId,
 		};
-		try {
-			chrome.storage.local.set({ [key]: payload }, () => {
-				if (chrome.runtime.lastError) {
-					invalidateContext();
-					return;
-				}
-				// Sprint 9: keep sessionMeta in sync (outside callback - fire and forget)
-				// Use page title (character/persona name) as session title
-				const rawTitle = document.title || "";
-				const pageTitle = rawTitle.replace(/\s*[-_] Arena.*$/i, "").trim();
-				const sessionTitle =
-					(pageTitle && pageTitle.length > 1
-						? pageTitle
-						: this.rounds[0]?.title) || "未命名会话";
-				try {
-					upsertSessionMetaFromStore(
-						this.sessionId,
-						sessionTitle,
-						this.rounds.length,
-						this.messages.length,
-						location.href,
-					);
-				} catch {
-					/* folders storage may fail silently */
-				}
-			});
-		} catch {
-			/* intentionally empty — extension context invalidated */
-		}
+		if (!(await storageSet(key, payload))) return;
+		// Subscribers (folders' session index) are notified only after the write
+		// actually landed, preserving the old ordering guarantee.
+		emitStoreChange();
 	},
 
 	/**
@@ -95,161 +110,47 @@ export const conversationStore = {
 	 * Rejects if no cached data found or sessionId mismatch.
 	 * Resolves with restored count on success.
 	 */
-	loadFromStorage(
+	async loadFromStorage(
 		sessionId: string,
 	): Promise<{ msgs: number; rounds: number } | null> {
-		if (!contextValid) return Promise.resolve(null);
-		if (!sessionId) return Promise.resolve(null);
-		if (typeof chrome === "undefined" || !chrome.storage)
-			return Promise.resolve(null);
+		if (!sessionId) return null;
 		const key = `edge-ai-sidebar:session:${sessionId}`;
-		return new Promise((resolve) => {
-			try {
-				chrome.storage.local.get(key, (result) => {
-					if (chrome.runtime.lastError) {
-						invalidateContext();
-						resolve(null);
-						return;
-					}
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const raw = result[key] as any;
-					if (
-						!raw ||
-						!raw.messages ||
-						raw.messages.length === 0 ||
-						raw.sessionId !== sessionId
-					) {
-						resolve(null);
-						return;
-					}
-					// Sprint 7: migrate persisted 'source' field → 'origin'
-					this.messages = (raw.messages as SidebarMessage[]).map((m) => {
-						const old = m as SidebarMessage & { source?: MessageOrigin };
-						return { ...m, origin: old.source ?? "dom" } as SidebarMessage;
-					});
-					this.rounds = (raw.rounds ?? []) as SidebarRound[];
-					this.lastOrigin = "bootstrap";
-					bindDomAnchors();
-					console.log(
-						`[AI Sidebar] persistence: restored ${this.messages.length} msgs, ${this.rounds.length} rounds`,
-					);
-					resolve({ msgs: this.messages.length, rounds: this.rounds.length });
-				});
-			} catch {
-				/* intentionally empty — extension context invalidated */
-				resolve(null);
-			}
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const raw = (await storageGet(key)) as any;
+		if (
+			!raw ||
+			!raw.messages ||
+			raw.messages.length === 0 ||
+			raw.sessionId !== sessionId
+		) {
+			return null;
+		}
+		// Sprint 7: migrate persisted 'source' field → 'origin'
+		this.messages = (raw.messages as SidebarMessage[]).map((m) => {
+			const old = m as SidebarMessage & { source?: MessageOrigin };
+			return { ...m, origin: old.source ?? "dom" } as SidebarMessage;
 		});
+		this.rounds = (raw.rounds ?? []) as SidebarRound[];
+		this.lastOrigin = "bootstrap";
+		bindDomAnchors();
+		console.log(
+			`[AI Sidebar] persistence: restored ${this.messages.length} msgs, ${this.rounds.length} rounds`,
+		);
+		return { msgs: this.messages.length, rounds: this.rounds.length };
 	},
 };
 
-// ─── Round computation ───────────────────────────────────────────────────────────────
-
-export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
-	const rounds: SidebarRound[] = [];
-	let current: SidebarRound | null = null;
-	let pendingLead: SidebarMessage | null = null;
-	let roundIdx = 0;
-	// Sprint 8: preview tracking
-	let currentFirstUser: SidebarMessage | null = null;
-	let currentFirstAssistant: SidebarMessage | null = null;
-	let currentAssistantCount = 0;
-
-	const pushRound = (r: SidebarRound) => {
-		// Sprint 8: fill preview fields before pushing — but never clobber values the
-		// caller already set explicitly. The lead-assistant round sets assistantPreview
-		// and assistantCount by hand; currentFirst*/currentAssistantCount are still
-		// null/0 at that point, so plain assignment used to wipe them back.
-		r.userPreview ??= currentFirstUser?.content.slice(0, 60) || undefined;
-		r.assistantPreview ??=
-			currentFirstAssistant?.content.slice(0, 100) || undefined;
-		r.assistantCount ??= currentAssistantCount;
-		rounds.push(r);
-	};
-
-	for (const msg of msgs) {
-		if (msg.role === "assistant" && current === null) {
-			// lead assistant (before first user)
-			pendingLead = msg;
-			continue;
-		}
-		if (msg.role === "user") {
-			// Push previous round
-			if (current !== null) {
-				pushRound(current);
-				roundIdx++;
-			} else if (pendingLead) {
-				// Lead assistant round — no user, use assistant as preview
-				const leadRound: SidebarRound = {
-					id: pendingLead.id,
-					title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-					messageCount: 1,
-					index: roundIdx,
-					hasAnchor: !!pendingLead.domId,
-					// Sprint 8: lead assistant shows as both user and assistant preview
-					userPreview: undefined,
-					assistantPreview: pendingLead.content.slice(0, 100),
-					assistantCount: 1,
-				};
-				pushRound(leadRound);
-				roundIdx++;
-			}
-			// Start new round with user
-			currentFirstUser = msg;
-			currentFirstAssistant = null;
-			currentAssistantCount = 0;
-			current = {
-				id: msg.id,
-				title: msg.content.slice(0, 80),
-				messageCount: 0,
-				index: roundIdx,
-				hasAnchor: false,
-				userPreview: undefined,
-				assistantPreview: undefined,
-			};
-			pendingLead = null;
-		}
-		if (current !== null) {
-			current.messageCount++;
-			if (msg.domId) current.hasAnchor = true;
-			if (msg.role === "assistant") {
-				currentAssistantCount++;
-				if (currentFirstAssistant === null) currentFirstAssistant = msg;
-			}
-		}
-	}
-
-	if (current) {
-		pushRound(current);
-		roundIdx++;
-	} else if (pendingLead && rounds.length === 0) {
-		// Lead assistant only — no rounds at all
-		const leadRound: SidebarRound = {
-			id: pendingLead.id,
-			title: pendingLead.content.slice(0, 80) || "(开场助手消息)",
-			messageCount: 1,
-			index: 0,
-			hasAnchor: !!pendingLead.domId,
-			userPreview: undefined,
-			assistantPreview: pendingLead.content.slice(0, 100),
-			assistantCount: 1,
-		};
-		pushRound(leadRound);
-	}
-
-	return rounds;
-}
-
 // ─── Merge helpers ─────────────────────────────────────────────────────────────────
 
-/** Add a message to the store if not already present (by fingerprint or id). */
+/** Add a message to the store if not already present (by content + occurrence). */
 function upsertMessage(msg: SidebarMessage): boolean {
-	const fp = msg.fingerprint || fingerprint(msg.content);
-	const fpKey = fp;
+	const base = baseKey(msg);
+	const occ = msg.occurrence ?? 0;
+	msg.fingerprint = base;
+	msg.occurrence = occ;
 
-	// Check by fingerprint first (robust across re-extraction).
 	const existing = conversationStore.messages.find(
-		(m) => (m.fingerprint || fingerprint(m.content)) === fpKey,
+		(m) => baseKey(m) === base && (m.occurrence ?? 0) === occ,
 	);
 	if (existing) {
 		// Merge: preserve existing domId even if new source doesn't have it.
@@ -267,135 +168,24 @@ function upsertMessage(msg: SidebarMessage): boolean {
 	return true; // was new
 }
 
-// ─── Bootstrap: extract initial messages from page markup ───────────────────────────
-
-export function extractBootstrapMessages(): SidebarMessage[] {
-	const results: SidebarMessage[] = [];
-
-	// Try __NEXT_DATA__ JSON embedded in page.
-	try {
-		const nextDataEl = document.getElementById("__NEXT_DATA__");
-		if (nextDataEl && nextDataEl.textContent) {
-			const nd = JSON.parse(nextDataEl.textContent);
-			const msgs = findMessagesInObject(nd, [], 0);
-			for (const m of msgs) {
-				results.push({ ...m, origin: "bootstrap" });
-			}
-		}
-	} catch (_e) {
-		/* intentionally empty — __NEXT_DATA__ may not exist on all pages */
-	}
-
-	// Also scan inline script tags for Arena message structures.
-	try {
-		const scripts = document.querySelectorAll("script");
-		for (const s of Array.from(scripts)) {
-			const txt = s.textContent || "";
-			const matches = txt.matchAll(
-				/"(content|text|userMessage|assistantMessage)"\s*:\s*"((?:[^"\\]|\\.){10,5000})"/g,
-			);
-			for (const m of matches) {
-				const content = m[2].replace(/\\"/g, '"').replace(/\\n/g, "\n");
-				if (content.length > 5) {
-					const fp = fingerprint(content);
-					if (
-						!results.find(
-							(r) => (r.fingerprint || fingerprint(r.content)) === fp,
-						)
-					) {
-						results.push({
-							id: "boot-" + results.length,
-							role: detectRole(content),
-							content,
-							roundIndex: -1,
-							origin: "bootstrap",
-							fingerprint: fp,
-						});
-					}
-				}
-			}
-		}
-	} catch (_e) {
-		/* intentionally empty — script scanning may throw */
-	}
-
-	return results;
-}
-
-function findMessagesInObject(
-	obj: unknown,
-	path: string[],
-	depth: number,
-): SidebarMessage[] {
-	if (depth > 8 || !obj || typeof obj !== "object") return [];
-	const results: SidebarMessage[] = [];
-
-	// Terminal check: does this object look like a message?
-	const o = obj as Record<string, unknown>;
-	if (
-		typeof o.content === "string" &&
-		o.content.length > 5 &&
-		(o.role === "user" || o.role === "assistant")
-	) {
-		results.push({
-			id: "boot-" + path.join("-") + "-" + results.length,
-			role: o.role as "user" | "assistant",
-			content: String(o.content).slice(0, 10000),
-			roundIndex: -1,
-			origin: "bootstrap",
-			fingerprint: fingerprint(String(o.content)),
-		});
-	}
-
-	for (const [k, v] of Object.entries(obj)) {
-		if (Array.isArray(v)) {
-			for (let i = 0; i < v.length; i++) {
-				results.push(
-					...findMessagesInObject(v[i], [...path, k, String(i)], depth + 1),
-				);
-			}
-		} else if (v && typeof v === "object") {
-			results.push(...findMessagesInObject(v, [...path, k], depth + 1));
-		}
-	}
-
-	return results;
-}
-
-function detectRole(content: string): "user" | "assistant" {
-	// Heuristic: short, question-like → user; long, complete sentences → assistant.
-	if (content.length < 200) return "user";
-	const questionMarks = (content.match(/[?？]/g) || []).length;
-	if (questionMarks > 2) return "user";
-	return "assistant";
-}
-
 // ─── Capture: add captured messages to store ───────────────────────────────────────
 
 export function addCapturedMessage(msg: SidebarMessage): boolean {
 	msg.origin = "capture";
-	return upsertMessage(msg);
-}
-
-// ─── DOM: add extracted messages to store (no anchor binding here) ──────────────────
-
-export function addDomMessages(
-	domMessages: SidebarMessage[],
-): SidebarMessage[] {
-	const added: SidebarMessage[] = [];
-	for (const m of domMessages) {
-		const fp = fingerprint(m.content);
-		const added_msg: SidebarMessage = {
-			id: m.id,
-			role: m.role === "system" ? "assistant" : m.role,
-			content: m.content,
-			roundIndex: -1,
-			origin: "dom",
-			fingerprint: fp,
-		};
-		if (upsertMessage(added_msg)) added.push(added_msg);
+	// Capture arrives one message at a time, so its occurrence index is the
+	// number of already-merged capture messages with the same content. That
+	// lines up with the DOM's own numbering for the normal case; if the hook
+	// installed late and missed earlier repeats, the worst case is that this
+	// message merges into the wrong occurrence and keeps DOM text instead of
+	// capture text — no message or round is lost.
+	const base = fingerprint(msg.content);
+	let n = 0;
+	for (const m of conversationStore.messages) {
+		if (m.origin === "capture" && baseKey(m) === base) n++;
 	}
-	return added;
+	msg.fingerprint = base;
+	msg.occurrence = n;
+	return upsertMessage(msg);
 }
 
 // ─── Anchor binding: bind DOM elements to canonical messages by fingerprint ─────────
@@ -434,16 +224,6 @@ export function bindDomAnchors() {
 // ─── Rebuild rounds from canonical messages ─────────────────────────────────────────
 
 export function rebuildRounds() {
-	// Assign roundIndex to each message.
-	let currentRound = -1;
-	for (const msg of conversationStore.messages) {
-		if (msg.role === "assistant" && currentRound === -1) {
-			// lead assistant, stays in same round
-		} else if (msg.role === "user") {
-			currentRound++;
-		}
-		msg.roundIndex = currentRound === -1 ? 0 : currentRound;
-	}
 	conversationStore.rounds = computeRounds(conversationStore.messages);
 }
 
@@ -463,28 +243,21 @@ export function refreshStore(opts: {
 		return;
 	}
 
-	// Priority merge: bootstrap → capture → dom.
-	for (const m of bootstrap) {
+	// Priority merge: bootstrap → capture → dom. Each source is numbered
+	// independently, so repeats inside one source survive while the same message
+	// seen by two sources still merges.
+	for (const m of withOccurrences(bootstrap)) {
 		upsertMessage({ ...m, origin: "bootstrap" });
 	}
-	for (const m of capture) {
+	for (const m of withOccurrences(capture)) {
 		upsertMessage({ ...m, origin: "capture" });
 	}
-	for (const m of dom) {
-		const fp = fingerprint(m.content);
-		const existing = conversationStore.messages.find(
-			(r) => (r.fingerprint || fingerprint(r.content)) === fp,
-		);
-		if (!existing) {
-			upsertMessage({
-				id: m.id,
-				role: m.role === "system" ? "assistant" : m.role,
-				content: m.content,
-				roundIndex: -1,
-				origin: "dom",
-				fingerprint: fp,
-			});
-		}
+	for (const m of withOccurrences(dom)) {
+		upsertMessage({
+			...m,
+			role: m.role === "system" ? "assistant" : m.role,
+			origin: "dom",
+		});
 	}
 
 	// Sprint 3.2: always bind anchors to keep DOM ↔ store in sync (even if no new messages).
@@ -499,64 +272,4 @@ export function refreshStore(opts: {
 	if (capture.length > 0) conversationStore.lastOrigin = "capture";
 	else if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
 	else if (dom.length > 0) conversationStore.lastOrigin = "dom";
-}
-
-// ─── Scroll to round: navigate to the round's DOM anchor ─────────────────────────
-
-export function scrollToRound(roundId: string): boolean {
-	const msg = conversationStore.messages.find((m) => m.id === roundId);
-	if (!msg) return false;
-
-	// Try direct DOM id first.
-	if (msg.domId) {
-		const el = cachedElements.get(msg.domId);
-		if (el) {
-			el.scrollIntoView({ behavior: "smooth", block: "start" });
-			(el as HTMLElement).classList.add("ai-sidebar-flash");
-			setTimeout(
-				() => (el as HTMLElement).classList.remove("ai-sidebar-flash"),
-				1500,
-			);
-			return true;
-		}
-	}
-
-	// Try page-level query.
-	const el = document.querySelector(
-		'[data-ai-sidebar-id="' + CSS.escape(msg.domId || msg.id) + '"]',
-	);
-	if (el) {
-		el.scrollIntoView({ behavior: "smooth", block: "start" });
-		(el as HTMLElement).classList.add("ai-sidebar-flash");
-		setTimeout(
-			() => (el as HTMLElement).classList.remove("ai-sidebar-flash"),
-			1500,
-		);
-		return true;
-	}
-
-	return false;
-}
-
-/**
- * Return all messages belonging to the given roundId.
- * Reads from conversationStore.rounds to find the round boundaries,
- * then slices conversationStore.messages accordingly.
- */
-export function getMessagesForRound(roundId: string): SidebarMessage[] {
-	const rounds = conversationStore.rounds;
-	const idx = rounds.findIndex((r) => r.id === roundId);
-	if (idx < 0) return [];
-	const startMsgIdx = conversationStore.messages.findIndex(
-		(m) => m.id === rounds[idx].id,
-	);
-	if (startMsgIdx < 0) return [];
-	const endIdx =
-		idx + 1 < rounds.length
-			? conversationStore.messages.findIndex((m) => m.id === rounds[idx + 1].id)
-			: conversationStore.messages.length;
-	return conversationStore.messages.slice(
-		startMsgIdx,
-		endIdx > startMsgIdx ? endIdx : conversationStore.messages.length,
-	);
 }

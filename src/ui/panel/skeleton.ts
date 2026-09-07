@@ -1,0 +1,161 @@
+// ui/panel/skeleton.ts — the panel shell: header, search, list container, FAB
+// handoff, and style injection into the shadow root.
+
+import { conversationStore } from "../../conversationStore";
+import { panel } from "../../state";
+import { isSessionRoute } from "../../platform/route";
+import { ICON_X_SVG, UI_STYLES } from "../styles";
+import { exportConversation, summarizeRounds } from "../modals";
+
+// ─── Panel skeleton ─────────────────────────────────────────────────────────────────────
+
+export function ensurePanelSkeleton(
+	shadowRoot: ShadowRoot,
+	roundsCount: number,
+	_messagesCount: number,
+	refreshUI: () => void,
+): HTMLElement {
+	let panelEl = shadowRoot.querySelector(".panel") as HTMLElement | null;
+	if (panelEl) {
+		const titleEl = panelEl.querySelector(".panel-title");
+		if (titleEl) titleEl.textContent = roundsCount + " loaded rounds";
+		return panelEl;
+	}
+
+	panelEl = document.createElement("div");
+	panelEl.className = "panel";
+	panelEl.setAttribute("data-ai-sidebar-panel", "1"); // Sprint 4: mark for debugging
+
+	// Header
+	const header = document.createElement("div");
+	header.className = "header";
+
+	const title = document.createElement("span");
+	title.className = "panel-title";
+	title.textContent = roundsCount + " loaded rounds";
+	header.appendChild(title);
+
+	const makeHeaderBtn = (text: string, title: string, onclick: () => void) => {
+		const btn = document.createElement("button");
+		btn.className = "summary-btn";
+		btn.textContent = text;
+		btn.title = title;
+		btn.onclick = onclick;
+		return btn;
+	};
+
+	// All action buttons wrapped in header-actions
+	const headerActions = document.createElement("div");
+	headerActions.className = "header-actions";
+
+	// Order toggle
+	const orderBtn = makeHeaderBtn(
+		panel.reverseOrder ? "🔃" : "🔄",
+		"Newest first (click to reverse)",
+		() => {
+			panel.reverseOrder = !panel.reverseOrder;
+			refreshUI();
+		},
+	);
+	headerActions.appendChild(orderBtn);
+
+	// Sprint 3.1: Scan button — auto-scroll up to trigger Arena loading older messages
+	const isCharacterChat = isSessionRoute(location.pathname);
+	if (isCharacterChat) {
+		let scanning = false;
+		const scanBtn = makeHeaderBtn("⤒", "Scan older loaded history", () => {
+			if (scanning) return;
+			scanning = true;
+			const startY = window.scrollY;
+			let idleTicks = 0;
+			let steps = 0;
+			let lastCount = document.querySelectorAll("[data-ai-sidebar-id]").length;
+
+			const timer = window.setInterval(() => {
+				window.scrollBy({ top: -700, behavior: "auto" });
+				steps++;
+
+				window.setTimeout(() => {
+					const nextCount = document.querySelectorAll(
+						"[data-ai-sidebar-id]",
+					).length;
+					if (nextCount > lastCount) {
+						lastCount = nextCount;
+						idleTicks = 0;
+					} else {
+						idleTicks++;
+					}
+
+					if (window.scrollY <= 0 || idleTicks >= 4 || steps >= 10) {
+						clearInterval(timer);
+						window.setTimeout(() => {
+							window.scrollTo({ top: startY, behavior: "auto" });
+							scanning = false;
+						}, 250);
+					}
+				}, 220);
+			}, 650);
+		});
+		headerActions.appendChild(scanBtn);
+	}
+
+	// Export button
+	const exportBtn = makeHeaderBtn("📤", "Export current conversation", () => {
+		exportConversation(conversationStore.messages, shadowRoot);
+	});
+	headerActions.appendChild(exportBtn);
+
+	// Summarize button — hidden on /c/ (no full history available there)
+	if (!isCharacterChat) {
+		const sumBtn = makeHeaderBtn("✨", "AI summarize rounds", () => {
+			summarizeRounds(conversationStore.messages, shadowRoot);
+		});
+		headerActions.appendChild(sumBtn);
+	}
+
+	header.appendChild(headerActions);
+
+	// Close button
+	const closeBtn = document.createElement("button");
+	closeBtn.className = "close-btn";
+	closeBtn.setAttribute("aria-label", "Close");
+	const xParser = new DOMParser();
+	const xDoc = xParser.parseFromString(ICON_X_SVG, "image/svg+xml");
+	const xSvg = xDoc.documentElement as unknown as SVGElement;
+	if (xSvg) closeBtn.appendChild(xSvg);
+	closeBtn.onclick = () => {
+		panel.isOpen = false;
+		refreshUI();
+	};
+	header.appendChild(closeBtn);
+
+	panelEl.appendChild(header);
+
+	// Search input
+	const searchInput = document.createElement("input");
+	searchInput.className = "search-input";
+	searchInput.type = "text";
+	searchInput.placeholder = "Search rounds...";
+	searchInput.oninput = () => {
+		panel.searchQuery = searchInput.value.toLowerCase().trim();
+		refreshUI();
+	};
+	panelEl.appendChild(searchInput);
+
+	// List container
+	const list = document.createElement("div");
+	list.className = "list";
+	panelEl.appendChild(list);
+
+	shadowRoot.appendChild(panelEl);
+	return panelEl;
+}
+
+// ─── Ensure styles are injected ──────────────────────────────────────────────────────────
+
+export function ensureStyles(shadowRoot: ShadowRoot) {
+	if (shadowRoot.querySelector("style")) return;
+	const s = document.createElement("style");
+	s.textContent = UI_STYLES;
+	shadowRoot.appendChild(s);
+}

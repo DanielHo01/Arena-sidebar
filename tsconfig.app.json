@@ -13,7 +13,6 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
 
     /* Path aliases */
     "baseUrl": ".",
@@ -23,10 +22,46 @@
     "ignoreDeprecations": "6.0",
 
     /* Linting */
+    // TS 6 already enables the strict family by default; stating it explicitly
+    // pins the behaviour so a future compiler default cannot silently loosen it.
+    // Verified zero-cost: `tsc -p tsconfig.app.json --strict` reports 0 errors.
+    "strict": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // Not part of the `strict` family, so it has to be named. `arr[i]` is typed
+    // `T` rather than `T | undefined` without it, which is a lie for any array
+    // whose length the compiler cannot see -- exactly the case for everything
+    // parsed off arena.ai. Enabling it found 9 sites; all were narrowed with real
+    // guards rather than `!`, because an assertion here would just re-hide the
+    // bug this flag exists to surface.
+    //
+    // Deliberately NOT enabled in tsconfig.test.json. There it costs 67 errors,
+    // nearly all of the form `expect(msgs[0].content)`, where an out-of-range
+    // index already fails the assertion loudly. The only way to silence them is
+    // mechanical `!` or `?.`, which adds churn and hides nothing. The value of
+    // this flag is in src/, where the arrays come from a page we do not control.
+    "noUncheckedIndexedAccess": true,
+    // Also outside the `strict` family. Makes `foo?: T` mean "may be absent"
+    // rather than "may be absent OR explicitly undefined", so a field that the
+    // code really does clear has to say so in its declaration.
+    //
+    // This one earns its keep: bindDomAnchors assigns `msg.domId = undefined`
+    // when an element is recycled, and computeRounds builds lead rounds with the
+    // preview fields explicitly undefined so pushRound's `??=` will not clobber
+    // a value a caller set. Both are real behaviour that a bare `?:` misstates.
+    // Enabling it cost 9 sites, fixed by making the declarations in types.ts and
+    // titleResolver.ts honest rather than by changing any behaviour.
+    "exactOptionalPropertyTypes": true
+    //
+    // noPropertyAccessFromIndexSignature was evaluated and deliberately NOT
+    // enabled. Its 22 errors are all pure syntax -- `el.dataset.roundId` would
+    // have to become `el.dataset["roundId"]`, and `o.content` on a
+    // Record<string, unknown> would have to become `o["content"]`. It catches no
+    // bug, and bracket notation on DOMStringMap is less readable than the
+    // property form every DOM codebase uses. Cost without benefit.
   },
   "include": ["src"]
 }

@@ -8,18 +8,23 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "npm run test:mirror && npm run test:src",
-    "test:mirror": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs && node scripts/test-conversation-store.cjs",
-    "test:src": "tsx scripts/test-src-rounds.ts && tsx scripts/test-src-store.ts && tsx scripts/test-src-title-resolution.ts"
+    "typecheck": "tsc -b --pretty false",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
     "@types/chrome": "^0.2.0",
     "@types/node": "^24.13.2",
+    "@vitest/coverage-v8": "^5.0.0",
     "jsdom": "^25.0.1",
     "oxlint": "^1.69.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.23.5",
     "typescript": "~6.0.2",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^5.0.0"
   }
 }

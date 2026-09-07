@@ -27,14 +27,25 @@ export interface SidebarMessage {
 	content: string;
 	/** Stable content fingerprint for deduplication across sources */
 	fingerprint?: string;
-	/** DOM anchor id (set by bindDomAnchors pass) */
-	domId?: string;
-	/** Zero-based round index this message belongs to */
-	roundIndex?: number;
+	/**
+	 * Which repeat of this content this message is, within its own source
+	 * stream (0-based). Without it, a user who sends the same short message
+	 * twice has both turns collapsed into one — see tests/unit/dedup.test.ts.
+	 * Re-extracting the same DOM renumbers identically, so it stays idempotent.
+	 */
+	occurrence?: number;
+	/**
+	 * DOM anchor id (set by bindDomAnchors pass).
+	 *
+	 * `| undefined` is deliberate, not noise: bindDomAnchors CLEARS this field
+	 * (`msg.domId = undefined`) once the element is recycled out of the DOM.
+	 * Under exactOptionalPropertyTypes a bare `?:` would forbid exactly that.
+	 */
+	domId?: string | undefined;
 	/** Where this message was first observed */
 	origin?: MessageOrigin;
-	/** Timestamp from capture source */
-	capturedAt?: number;
+	/** Timestamp from capture source. Copied through on merge, so it may be undefined. */
+	capturedAt?: number | undefined;
 	/** Session id from capture source */
 	sessionId?: string;
 }
@@ -51,10 +62,16 @@ export interface SidebarRound {
 	index: number;
 	/** Whether any message in this round has a DOM anchor */
 	hasAnchor: boolean;
-	/** ── Sprint 8: role-aware preview fields ── */
-	userPreview?: string;
-	assistantPreview?: string;
-	assistantCount?: number;
+	/**
+	 * ── Sprint 8: role-aware preview fields ──
+	 *
+	 * `| undefined` is deliberate: computeRounds builds lead rounds with these
+	 * explicitly undefined and pushRound fills them with `??=`, which must not
+	 * clobber a value a caller set on purpose.
+	 */
+	userPreview?: string | undefined;
+	assistantPreview?: string | undefined;
+	assistantCount?: number | undefined;
 }
 
 // ─── Capture types (unchanged — written by inject-hook.js in main world) ───────────
@@ -109,12 +126,20 @@ export interface SessionMeta {
 	/** Title shown in the UI — from round title or custom rename */
 	title: string;
 	/** Custom rename set by user (overrides title) */
-	customTitle?: string;
+	customTitle?: string | undefined;
 	folderId: string;
-	roundCount?: number;
-	messageCount?: number;
+	roundCount?: number | undefined;
+	messageCount?: number | undefined;
 	createdAt: number;
 	updatedAt: number;
-	url?: string;
+	url?: string | undefined;
 }
 
+// ─── Lifecycle ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Undo a `setup*` registration: remove listeners, disconnect observers, drop
+ * references. Every setup function returns one so the entry point can tear the
+ * whole extension down on SPA navigation instead of leaking registrations.
+ */
+export type Disposer = () => void;
