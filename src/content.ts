@@ -26,12 +26,7 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 //   ui/modals.ts    — export/summary modals
 //   folders.ts          — session folder management
 
-import {
-	extractMessages,
-	resetExtractState,
-	USER_MESSAGE_SELECTOR,
-	ASSISTANT_MESSAGE_SELECTOR,
-} from "./extract";
+import { extractMessages, resetExtractState } from "./extract";
 import {
 	conversationStore,
 	refreshStore,
@@ -57,6 +52,11 @@ import {
 } from "./ui/panel";
 import { setupHistoryTitleEditing } from "./historyTitles";
 import { getSessionId, isSessionRoute, routeKey } from "./platform/route";
+import {
+	isPreScrollActive,
+	resetPreScroll,
+	startPreScroll,
+} from "./features/prescroll";
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close
@@ -139,6 +139,7 @@ let isFirstRender = true; // Sprint 3.1: skip debounce on first render
 
 function resetSessionState(): void {
 	resetExtractState();
+	resetPreScroll();
 	cachedElements.clear();
 	conversationStore.reset();
 	panel.currentRoundIdx = 0;
@@ -178,16 +179,24 @@ function setupObserver(_shadowRoot: ShadowRoot, refreshUI: () => void) {
 		// 250ms was too short and stacked multiple extract rebuilds.
 		// Sprint 3.1: skip debounce on first render so panel appears instantly.
 		timers.debounce = setTimeout(() => {
-			if (!panel.isDragging && !preScrollActive) {
+			if (!panel.isDragging && !isPreScrollActive()) {
 				// Sprint 3.2: detect route change and rebuild store
 				const nextKey = routeKey(location.pathname, location.search);
 				if (nextKey !== lastRouteKey) {
 					resetSessionState();
-					rebuildForCurrentRoute();
 					isFirstRender = true; // route change → next render should be immediate
 					// Phase 10A: re-inject Arena sidebar entries on route change
 					ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection());
 					setupHistoryContextMenu();
+					// Phase 1: force-load the new session's virtualised history
+					// before rebuilding. Previously this path called
+					// rebuildForCurrentRoute() directly and preScrollDone stayed
+					// true from bootstrap, so a switched-to session only ever
+					// showed the ~8 messages Arena had rendered.
+					void startPreScroll(() => {
+						void rebuildForCurrentRoute();
+						refreshUI();
+					});
 				}
 				setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
 				if (isFirstRender) {
@@ -240,157 +249,6 @@ function setupPeriodicPush(refreshUI: () => void) {
 // ─── Main render ─────────────────────────────────────────────────────────────────────────
 
 let shadowRoot: ShadowRoot | null = null;
-
-// ─── Pre-scroll: force-render all virtual-scrolled messages ────────────────────────────────
-
-function findScrollContainer(): HTMLElement | null {
-	// The real scroll container is inside <main> with overscroll-none —
-	// Arena renders only ~8 messages in DOM and progressively loads more as user scrolls.
-	const c = document.querySelector(
-		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-	);
-	if (
-		c &&
-		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
-	) {
-		return c as HTMLElement;
-	}
-	// Fallback: largest scrollable element inside <main>
-	const main = document.querySelector("main");
-	if (!main) return null;
-	let best: HTMLElement | null = null;
-	let bestScore = 0;
-	main.querySelectorAll("*").forEach((el) => {
-		const e = el as HTMLElement;
-		if (e.scrollHeight > e.clientHeight * 2) {
-			const score = e.scrollHeight - e.clientHeight;
-			if (score > bestScore) {
-				bestScore = score;
-				best = e;
-			}
-		}
-	});
-	return best;
-}
-
-let preScrollDone = false;
-let preScrollInterval: ReturnType<typeof setInterval> | null = null;
-let preScrollActive = false; // suppress observer work while forced-scrolling
-
-// Lightweight container lookup for preScroll retries — avoids the full <main>
-// fallback scan (querySelectorAll("*") + per-element scrollHeight forces reflow).
-function peekScrollContainer(): HTMLElement | null {
-	const c = document.querySelector(
-		'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-	);
-	if (
-		c &&
-		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
-	) {
-		return c as HTMLElement;
-	}
-	return null;
-}
-
-function startPreScroll(onDone: () => void) {
-	if (preScrollDone) {
-		onDone();
-		return;
-	}
-	const container = findScrollContainer();
-	if (!container) {
-		// Arena's React renders the scroll container after the body exists, so
-		// retry briefly (using the cheap peek) instead of giving up — a skipped
-		// preScroll leaves long conversations partially extracted.
-		console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
-		let retries = 0;
-		const retry = setInterval(() => {
-			const c = peekScrollContainer();
-			if (c || ++retries > 10) {
-				clearInterval(retry);
-				if (c) {
-					startPreScroll(onDone);
-				} else {
-					console.log(
-						"[AI Sidebar] preScroll: gave up, no container after retries",
-					);
-					preScrollDone = true;
-					onDone();
-				}
-			}
-		}, 200);
-		return;
-	}
-	// preScroll exists because Arena virtualizes (renders only ~8 messages) and we
-	// need the full list extracted. If the container isn't virtualized (fits on
-	// screen), skip entirely — no scroll, no extract, no signature burn.
-	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
-		preScrollDone = true;
-		onDone();
-		return;
-	}
-	const step = Math.max(container.clientHeight * 2, 1500);
-	console.log(
-		"[AI Sidebar] preScroll: totalH=",
-		container.scrollHeight,
-		"step=",
-		step,
-	);
-	preScrollActive = true;
-	// Stop once the rendered message count stops growing (Arena lazy-loads more
-	// while scrolling) — don't force-scroll the whole conversation to the bottom,
-	// which on long chats makes Arena render every message and janks the page.
-	let lastMsgCount = countRenderedMessages();
-	let stableTicks = 0;
-	const STABLE_LIMIT = 3;
-	preScrollInterval = setInterval(() => {
-		// Defense: if the interval was cleared externally, stop cleanly.
-		if (!preScrollActive || !preScrollInterval) {
-			if (preScrollInterval) clearInterval(preScrollInterval);
-			preScrollInterval = null;
-			preScrollActive = false;
-			return;
-		}
-		container.scrollBy(0, step);
-		const newCount = countRenderedMessages();
-		if (newCount > lastMsgCount) {
-			lastMsgCount = newCount;
-			stableTicks = 0;
-		} else {
-			stableTicks++;
-		}
-		if (stableTicks >= STABLE_LIMIT) {
-			clearInterval(preScrollInterval);
-			preScrollInterval = null;
-			preScrollActive = false;
-			console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
-			setTimeout(() => {
-				container.scrollTop = 0;
-				preScrollDone = true;
-				onDone();
-			}, 600);
-		}
-	}, 120);
-}
-
-// Count rendered message elements cheaply (querySelectorAll, no reflow).
-function countRenderedMessages(): number {
-	const main = document.querySelector("main");
-	if (!main) return 0;
-	let n = 0;
-	try {
-		n += main.querySelectorAll(USER_MESSAGE_SELECTOR).length;
-	} catch {
-		/* selector may throw on detached nodes */
-	}
-	try {
-		n += main.querySelectorAll(ASSISTANT_MESSAGE_SELECTOR).length;
-	} catch {
-		/* selector may throw on detached nodes */
-	}
-	return n;
-}
 
 function refreshUI() {
 	if (!shadowRoot) return;
