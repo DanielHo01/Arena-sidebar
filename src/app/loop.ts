@@ -18,6 +18,7 @@ import { extractMessages } from "../extract";
 import { pollCaptures } from "../capture";
 import { isPreScrollActive, startPreScroll } from "../features/prescroll";
 import { resetSessionState as appResetSessionState } from "./store";
+import { setupHiddenRoundsSync } from "../rounds";
 import {
 	ensureArenaFolderEntry,
 	toggleArenaSessionLibrarySection,
@@ -40,6 +41,13 @@ let lastRouteKey = "";
 let isFirstRender = true;
 
 let observer: MutationObserver | null = null;
+
+/**
+ * Cross-tab hidden-rounds subscription for the session being viewed. The key
+ * contains the session id, so every route change re-subscribes and drops the
+ * previous handle; teardown also happens in startDomLoop's disposer.
+ */
+let hiddenSync: Disposer | null = null;
 
 /** Seed the route key from the current location. Call once at bootstrap. */
 export function initRouteState(): void {
@@ -64,6 +72,12 @@ function handleRouteChange(hooks: LoopHooks): void {
 	// Phase 10A: re-inject Arena sidebar entries on route change.
 	ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection());
 	setupHistoryContextMenu();
+	// Hidden-round flags follow the session being viewed; rebuildForCurrentRoute
+	// loads them from storage, and this keeps cross-tab writes in step.
+	hiddenSync?.();
+	hiddenSync = null;
+	const sid = getSessionId(location.pathname);
+	if (sid) hiddenSync = setupHiddenRoundsSync(sid, hooks.refreshUI);
 	// Phase 1: force-load the new session's virtualised history before
 	// rebuilding. Previously this path called rebuildForCurrentRoute() directly
 	// and preScrollDone stayed true from bootstrap, so a switched-to session only
@@ -117,6 +131,8 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 			observer.disconnect();
 			observer = null;
 		}
+		hiddenSync?.();
+		hiddenSync = null;
 	};
 }
 

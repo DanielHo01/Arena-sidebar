@@ -12,6 +12,7 @@
 import type { SidebarRound } from "../types";
 import { conversationStore } from "../conversationStore";
 import { panel } from "../state";
+import { hiddenRoundIds } from "../rounds";
 import { renderKey } from "../core/renderKey";
 import { isSessionRoute } from "../platform/route";
 import { buildFab } from "./fab";
@@ -85,6 +86,8 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 		searchQuery: panel.searchQuery,
 		reverseOrder: panel.reverseOrder,
 		roundIds: storeRounds.map((r) => r.id),
+		hiddenRoundIds: Array.from(hiddenRoundIds),
+		showHiddenRounds: panel.showHiddenRounds,
 	});
 
 	// Fast-path: nothing the rendered output depends on has changed, and the

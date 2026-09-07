@@ -6,6 +6,28 @@ export const PANEL_LIST_CSS = /* css */ `
   .list::-webkit-scrollbar { width: 6px; }
   .list::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.30); border-radius: 999px; }
 
+  /* Reveal mode renders hidden rounds dimmed, with ↩ instead of ✕. */
+  .item-hidden { opacity: 0.55; }
+
+  /* Footer bar — the only way back to a hidden round. */
+  .hidden-bar {
+    display: block;
+    margin-top: 6px;
+    padding: 6px 8px;
+    text-align: center;
+    font-size: 10.5px;
+    color: #8b95a7;
+    border: 1px dashed rgba(139, 149, 167, 0.40);
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .hidden-bar:hover {
+    color: var(--arena-blue, #4d7cff);
+    border-color: rgba(77, 124, 255, 0.50);
+  }
+
+
   .item {
     position: relative;
     display: flex;

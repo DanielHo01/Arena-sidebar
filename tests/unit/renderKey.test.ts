@@ -17,6 +17,8 @@ const base = {
 	searchQuery: "",
 	reverseOrder: true,
 	roundIds: ["r1", "r2", "r3"],
+	hiddenRoundIds: [] as string[],
+	showHiddenRounds: false,
 };
 
 describe("renderKey", () => {
@@ -67,6 +69,29 @@ describe("renderKey", () => {
 		const a = renderKey({ ...base, roundIds: ["a|b", "c"] });
 		const b = renderKey({ ...base, roundIds: ["a", "b|c"] });
 		expect(a).not.toBe(b);
+	});
+
+	it("differs when a round becomes hidden (the old fast path missed this)", () => {
+		// Hiding changes the rendered list without touching the store's rounds,
+		// so before this field existed, a ✕ click left the key unchanged and
+		// the panel did not re-render until something else did.
+		expect(renderKey({ ...base, hiddenRoundIds: ["r1"] })).not.toBe(
+			renderKey(base),
+		);
+	});
+
+	it("differs when a different round is hidden", () => {
+		expect(renderKey({ ...base, hiddenRoundIds: ["r1"] })).not.toBe(
+			renderKey({ ...base, hiddenRoundIds: ["r2"] }),
+		);
+	});
+
+	it("differs when reveal mode toggles with the same hidden set", () => {
+		// Reveal mode keeps hidden rounds in the list, dimmed — a rendered
+		// change the hidden array alone cannot express.
+		expect(
+			renderKey({ ...base, hiddenRoundIds: ["r1"], showHiddenRounds: true }),
+		).not.toBe(renderKey({ ...base, hiddenRoundIds: ["r1"] }));
 	});
 
 	it("distinguishes an empty search from a cleared-then-typed one of same length", () => {

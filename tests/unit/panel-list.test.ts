@@ -49,6 +49,7 @@ describe("reconcileList", () => {
 		// Module-level state shared with the whole test process. panel.searchQuery
 		// in particular leaks between tests and silently changes the filter.
 		panel.searchQuery = "";
+		panel.showHiddenRounds = false;
 		hiddenRoundIds.clear();
 		refreshUI.mockClear();
 	});
@@ -216,5 +217,130 @@ describe("reconcileList", () => {
 
 		expect(list.contains(marker)).toBe(true);
 		expect(rowIds(list)).toEqual(["a"]);
+	});
+
+	describe("hidden-rounds footer bar", () => {
+		it("is absent when nothing is hidden", () => {
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")).toBeNull();
+		});
+
+		it("shows the hidden count and stays after the rows", () => {
+			hiddenRoundIds.add("b");
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			const bar = list.querySelector(".hidden-bar");
+			expect(bar?.textContent).toBe("1 hidden round — click to show");
+			// Rounds first, bar last — the reconcile loop positions rows by index,
+			// so the bar must never sit between them.
+			expect(list.lastElementChild).toBe(bar);
+			expect(rowIds(list)).toEqual(["a", "c"]);
+		});
+
+		it("pluralises the count", () => {
+			hiddenRoundIds.add("a");
+			hiddenRoundIds.add("b");
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")?.textContent).toBe(
+				"2 hidden rounds — click to show",
+			);
+		});
+
+		it("keeps the bar when every round is hidden — the escape hatch", () => {
+			// Without the bar here, ✕ would be a dead end: no rows, no way back.
+			hiddenRoundIds.add("a");
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(list.querySelector(".empty")?.textContent).toBe(
+				"No messages detected",
+			);
+			expect(list.querySelector(".hidden-bar")).not.toBeNull();
+			expect(list.lastElementChild?.className).toBe("hidden-bar");
+		});
+
+		it("removes the bar once nothing is hidden anymore", () => {
+			hiddenRoundIds.add("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			expect(list.querySelector(".hidden-bar")).not.toBeNull();
+
+			hiddenRoundIds.delete("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")).toBeNull();
+			expect(rowIds(list)).toEqual(["a", "b"]);
+		});
+
+		it("toggles reveal mode on click and refreshes", () => {
+			hiddenRoundIds.add("b");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			refreshUI.mockClear();
+
+			(list.querySelector(".hidden-bar") as HTMLElement).click();
+
+			expect(panel.showHiddenRounds).toBe(true);
+			expect(refreshUI).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("reveal mode", () => {
+		it("renders hidden rounds in place, dimmed, keeping order", () => {
+			hiddenRoundIds.add("b");
+			panel.showHiddenRounds = true;
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a", "b", "c"]);
+			const hiddenRow = list.querySelector('[data-round-id="b"]');
+			expect(hiddenRow?.classList.contains("item-hidden")).toBe(true);
+			expect(
+				list
+					.querySelector('[data-round-id="a"]')
+					?.classList.contains("item-hidden"),
+			).toBe(false);
+		});
+
+		it("labels the bar for collapsing while active", () => {
+			hiddenRoundIds.add("b");
+			panel.showHiddenRounds = true;
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")?.textContent).toBe(
+				"1 hidden round — click to hide again",
+			);
+		});
+
+		it("lets a row flip its flag without leaving the list", () => {
+			// In reveal mode a restored row stays in the diff, so its element
+			// must be updated in place, not rebuilt from scratch.
+			hiddenRoundIds.add("a");
+			panel.showHiddenRounds = true;
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			const rowBefore = list.querySelector('[data-round-id="a"]');
+
+			hiddenRoundIds.delete("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector('[data-round-id="a"]')).toBe(rowBefore);
+			expect(rowBefore?.classList.contains("item-hidden")).toBe(false);
+			expect(rowBefore?.querySelector(".item-visibility")?.textContent).toBe(
+				"✕",
+			);
+		});
+
+		it("still applies the search filter to hidden rounds", () => {
+			hiddenRoundIds.add("a");
+			panel.showHiddenRounds = true;
+			panel.searchQuery = "question b";
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["b"]);
+		});
 	});
 });

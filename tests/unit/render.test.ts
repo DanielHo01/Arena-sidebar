@@ -43,6 +43,7 @@ vi.mock("../../src/ui/fab", () => ({ buildFab: hooks.buildFab }));
 
 import { renderUI } from "../../src/ui/render";
 import { conversationStore } from "../../src/conversationStore";
+import { hiddenRoundIds } from "../../src/rounds";
 import { panel } from "../../src/state";
 
 function round(id: string): SidebarRound {
@@ -110,7 +111,9 @@ describe("renderUI", () => {
 		panel.reverseOrder = false;
 		panel.currentRoundIdx = 0;
 		panel.highlightInitialized = false;
+		panel.showHiddenRounds = false;
 		panel.lastRenderKey = "";
+		hiddenRoundIds.clear();
 		shadow = makeShadow();
 		onRefresh = vi.fn();
 		resetHooks();
@@ -185,11 +188,69 @@ describe("renderUI", () => {
 			];
 			panel.isOpen = true;
 			// Prime the key without leaving a .panel behind.
-			panel.lastRenderKey = JSON.stringify([true, "", false, ["r1"]]);
+			panel.lastRenderKey = JSON.stringify([
+				true,
+				"",
+				false,
+				["r1"],
+				[],
+				false,
+			]);
 
 			renderUI(shadow, onRefresh);
 
 			expect(hooks.ensurePanelSkeleton).toHaveBeenCalled();
+		});
+
+		it("re-renders when a round is hidden (the ✕ click used to be skipped)", () => {
+			conversationStore.rounds = [round("r1"), round("r2")];
+			conversationStore.messages = [
+				{ id: "m1", role: "user", content: "hi" } as never,
+			];
+			panel.isOpen = true;
+
+			renderUI(shadow, onRefresh);
+			clearCalls();
+			hiddenRoundIds.add("r1");
+
+			renderUI(shadow, onRefresh);
+
+			// Hiding changes the rendered list but not the store's rounds, so the
+			// key must carry the hidden set or the fast path eats the ✕ click.
+			expect(hooks.reconcileList).toHaveBeenCalledTimes(1);
+		});
+
+		it("re-renders when reveal mode toggles with the same hidden set", () => {
+			conversationStore.rounds = [round("r1"), round("r2")];
+			conversationStore.messages = [
+				{ id: "m1", role: "user", content: "hi" } as never,
+			];
+			panel.isOpen = true;
+			hiddenRoundIds.add("r1");
+
+			renderUI(shadow, onRefresh);
+			clearCalls();
+			panel.showHiddenRounds = true;
+
+			renderUI(shadow, onRefresh);
+
+			expect(hooks.reconcileList).toHaveBeenCalledTimes(1);
+		});
+
+		it("still takes the fast path when the hidden set is unchanged", () => {
+			conversationStore.rounds = [round("r1"), round("r2")];
+			conversationStore.messages = [
+				{ id: "m1", role: "user", content: "hi" } as never,
+			];
+			panel.isOpen = true;
+			hiddenRoundIds.add("r1");
+
+			renderUI(shadow, onRefresh);
+			clearCalls();
+
+			renderUI(shadow, onRefresh);
+
+			expect(hooks.reconcileList).not.toHaveBeenCalled();
 		});
 	});
 

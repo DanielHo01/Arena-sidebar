@@ -3,7 +3,7 @@
 // Exported for ui/panel/list.ts, which is the only caller.
 
 import type { SidebarRound } from "../../types";
-import { hiddenRoundIds } from "../../rounds";
+import { hiddenRoundIds, persistHiddenRounds } from "../../rounds";
 import { getMessagesForRound, scrollToRound } from "../../features/roundNav";
 import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
@@ -64,19 +64,21 @@ export function createRoundEl(
 		});
 	};
 
-	// Hide button
-	const hideBtn = document.createElement("button");
-	hideBtn.className = "item-action";
-	hideBtn.textContent = "✕";
-	hideBtn.title = "Hide this round";
-	hideBtn.onclick = (e) => {
+	// Hide / restore button. In normal mode this is ✕; in reveal mode (or any
+	// state where a hidden round is rendered) it becomes ↩, restoring the round.
+	// The click handler reads the live set, so one handler serves both roles.
+	const visibilityBtn = document.createElement("button");
+	visibilityBtn.className = "item-action item-visibility";
+	visibilityBtn.onclick = (e) => {
 		e.stopPropagation();
-		hiddenRoundIds.add(round.id);
+		if (hiddenRoundIds.has(round.id)) hiddenRoundIds.delete(round.id);
+		else hiddenRoundIds.add(round.id);
+		persistHiddenRounds();
 		refreshUI();
 	};
 
 	actions.appendChild(copyBtn);
-	actions.appendChild(hideBtn);
+	actions.appendChild(visibilityBtn);
 	meta.appendChild(metaLabel);
 	meta.appendChild(actions);
 
@@ -105,6 +107,7 @@ export function createRoundEl(
 	item.appendChild(meta);
 	item.appendChild(title);
 	item.appendChild(assistantPreview);
+	syncVisibilityUI(item, round.id);
 
 	const isCharacterChat = isSessionRoute(location.pathname);
 	item.onclick = () => {
@@ -115,6 +118,24 @@ export function createRoundEl(
 	};
 
 	return item;
+}
+
+// ─── Hidden-round visibility ────────────────────────────────────────────────────────
+
+/**
+ * Sync one row's hidden-round affordances with the live set: the dimmed
+ * .item-hidden style and the ✕ / ↩ button. Called on create and from
+ * updateRoundEl — in reveal mode a row stays in the list when its flag
+ * flips, so the existing element must be updated in place.
+ */
+function syncVisibilityUI(el: HTMLElement, roundId: string): void {
+	const hidden = hiddenRoundIds.has(roundId);
+	el.classList.toggle("item-hidden", hidden);
+	const btn = el.querySelector(".item-visibility") as HTMLElement | null;
+	if (btn) {
+		btn.textContent = hidden ? "↩" : "✕";
+		btn.title = hidden ? "Restore this round" : "Hide this round";
+	}
 }
 
 // Sprint 4/8: updateRoundEl for .item-meta + .item-title + .item-assistant-preview
@@ -155,4 +176,5 @@ export function updateRoundEl(
 		}
 	}
 	el.dataset.roundIdx = String(idx);
+	syncVisibilityUI(el, round.id);
 }

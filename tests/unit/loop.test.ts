@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => ({
 	toggleArenaSessionLibrarySection: vi.fn(),
 	setupHistoryContextMenu: vi.fn(),
 	setupHistoryTitleEditing: vi.fn(),
+	onStorageChanged: vi.fn((_key: string, _h: (change: unknown) => void) =>
+		vi.fn(),
+	),
 }));
 
 const store = vi.hoisted(() => ({
@@ -53,6 +56,9 @@ vi.mock("../../src/ui/contextMenu", () => ({
 }));
 vi.mock("../../src/historyTitles", () => ({
 	setupHistoryTitleEditing: mocks.setupHistoryTitleEditing,
+}));
+vi.mock("../../src/platform/storage", () => ({
+	onStorageChanged: mocks.onStorageChanged,
 }));
 
 type Loop = typeof import("../../src/app/loop");
@@ -239,6 +245,33 @@ describe("startDomLoop", () => {
 		finishPreScroll();
 		expect(h.rebuildForCurrentRoute).toHaveBeenCalledTimes(1);
 		expect(h.refreshUI).toHaveBeenCalled();
+	});
+
+	it("re-subscribes hidden-round sync per route change", async () => {
+		// The hidden-rounds storage key contains the session id, so each route
+		// change must subscribe the NEW session's key and dispose the old one.
+		window.history.pushState({}, "", "/c/aaa");
+		loop.initRouteState();
+		startDom(hooks());
+
+		window.history.pushState({}, "", "/c/bbb");
+		await mutate();
+		vi.advanceTimersByTime(800);
+
+		window.history.pushState({}, "", "/c/ccc");
+		await mutate();
+		vi.advanceTimersByTime(800);
+
+		const keys = mocks.onStorageChanged.mock.calls.map((c) => c[0]);
+		expect(keys).toEqual([
+			"edge-ai-sidebar:hidden-rounds:bbb",
+			"edge-ai-sidebar:hidden-rounds:ccc",
+		]);
+		const disposers = mocks.onStorageChanged.mock.results.map(
+			(r) => r.value as ReturnType<typeof vi.fn>,
+		);
+		expect(disposers[0]).toHaveBeenCalled(); // bbb's listener dropped
+		expect(disposers[1]).not.toHaveBeenCalled(); // ccc's still live
 	});
 
 	it("ignores query-string churn on a session route", async () => {

@@ -53,6 +53,10 @@ const m = vi.hoisted(() => {
 		getSessionId: vi.fn(() => ""),
 		isSessionRoute: vi.fn(() => false),
 		storageGet: vi.fn(async (): Promise<unknown> => undefined),
+		loadHiddenRounds: vi.fn(async () => {
+			order.push("loadHiddenRounds");
+		}),
+		setupHiddenRoundsSync: vi.fn(() => vi.fn()),
 		registerDisposer: vi.fn((d: () => void) => d),
 		disposeAll: vi.fn(),
 		initRouteState: vi.fn(),
@@ -111,6 +115,10 @@ vi.mock("../../src/platform/route", () => ({
 	isSessionRoute: m.isSessionRoute,
 }));
 vi.mock("../../src/platform/storage", () => ({ storageGet: m.storageGet }));
+vi.mock("../../src/rounds", () => ({
+	loadHiddenRounds: m.loadHiddenRounds,
+	setupHiddenRoundsSync: m.setupHiddenRoundsSync,
+}));
 vi.mock("../../src/app/store", () => ({
 	registerDisposer: m.registerDisposer,
 	disposeAll: m.disposeAll,
@@ -181,6 +189,25 @@ describe("content.ts assembler", () => {
 		await loadContent();
 
 		expect(m.panel.isOpen).toBe(true);
+	});
+
+	it("subscribes to cross-tab hidden-round changes on a session route", async () => {
+		m.getSessionId.mockReturnValue("sess-7");
+
+		await loadContent();
+
+		expect(m.setupHiddenRoundsSync).toHaveBeenCalledWith(
+			"sess-7",
+			expect.any(Function),
+		);
+	});
+
+	it("does not subscribe to hidden-round changes off a session route", async () => {
+		m.getSessionId.mockReturnValue("");
+
+		await loadContent();
+
+		expect(m.setupHiddenRoundsSync).not.toHaveBeenCalled();
 	});
 
 	it("keeps the panel closed off a session route", async () => {
@@ -256,6 +283,31 @@ describe("content.ts assembler", () => {
 			const extract = m.order.indexOf("extractMessages");
 			expect(load).toBeGreaterThanOrEqual(0);
 			expect(extract).toBeGreaterThan(load);
+		});
+
+		it("restores hidden-round flags before extracting from the DOM", async () => {
+			// Same ordering rule as the message record: the hidden flags must be
+			// in place before the first post-route render, not applied after it.
+			m.getSessionId.mockReturnValue("sess-1");
+			const h = await hooks();
+			m.order.length = 0;
+
+			await h.rebuildForCurrentRoute();
+
+			const load = m.order.indexOf("loadHiddenRounds");
+			const extract = m.order.indexOf("extractMessages");
+			expect(m.loadHiddenRounds).toHaveBeenCalledWith("sess-1");
+			expect(load).toBeGreaterThanOrEqual(0);
+			expect(extract).toBeGreaterThan(load);
+		});
+
+		it("skips the hidden-round load with no session id", async () => {
+			m.getSessionId.mockReturnValue("");
+			const h = await hooks();
+
+			await h.rebuildForCurrentRoute();
+
+			expect(m.loadHiddenRounds).not.toHaveBeenCalled();
 		});
 
 		it("binds the session id onto the store", async () => {

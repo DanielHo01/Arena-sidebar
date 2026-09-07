@@ -19,6 +19,16 @@ export interface RenderKeyInput {
 	searchQuery: string;
 	reverseOrder: boolean;
 	roundIds: string[];
+	/**
+	 * Round ids currently flagged hidden. Hiding changes the rendered list
+	 * without touching the store's rounds, so without this field the fast
+	 * path concluded "nothing changed" and a ✕ click did not re-render the
+	 * panel until something else did. Reveal mode does not change the hidden
+	 * set either, hence the separate boolean below.
+	 */
+	hiddenRoundIds: string[];
+	/** Reveal mode: hidden rounds render dimmed with a restore button. */
+	showHiddenRounds: boolean;
 }
 
 /** Stable key over everything the rendered UI depends on. */
@@ -28,5 +38,7 @@ export function renderKey(input: RenderKeyInput): string {
 		input.searchQuery,
 		input.reverseOrder,
 		input.roundIds,
+		input.hiddenRoundIds,
+		input.showHiddenRounds,
 	]);
 }

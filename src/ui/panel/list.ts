@@ -10,7 +10,7 @@ import { createRoundEl, updateRoundEl } from "./roundItem";
 export function reconcileList(
 	list: HTMLElement,
 	rounds: SidebarRound[],
-	_refreshUI: () => void, // eslint-disable-line @typescript-eslint/no-unused-vars
+	refreshUI: () => void,
 ) {
 	const byId = new Map<string, HTMLElement>();
 	for (const child of [...list.children] as HTMLElement[]) {
@@ -18,8 +18,11 @@ export function reconcileList(
 	}
 
 	const q = panel.searchQuery.toLowerCase().trim();
+	const hiddenCount = rounds.filter((r) => hiddenRoundIds.has(r.id)).length;
+	// Reveal mode keeps hidden rounds in the list, dimmed, with a restore
+	// button (roundItem.syncVisibilityUI); otherwise they are filtered out.
 	const filtered = rounds
-		.filter((r) => !hiddenRoundIds.has(r.id))
+		.filter((r) => panel.showHiddenRounds || !hiddenRoundIds.has(r.id))
 		.filter(
 			(r) =>
 				!q ||
@@ -41,28 +44,63 @@ export function reconcileList(
 		msg.textContent = q
 			? 'No matches for "' + panel.searchQuery + '"'
 			: "No messages detected";
-		return;
-	}
-	const emptyEl = list.querySelector(".empty");
-	if (emptyEl) emptyEl.remove();
+	} else {
+		const emptyEl = list.querySelector(".empty");
+		if (emptyEl) emptyEl.remove();
 
-	const newIds = new Set(filtered.map((r) => r.id));
-	for (const [id, el] of byId) {
-		if (!newIds.has(id)) {
-			el.remove();
-			byId.delete(id);
+		const newIds = new Set(filtered.map((r) => r.id));
+		for (const [id, el] of byId) {
+			if (!newIds.has(id)) {
+				el.remove();
+				byId.delete(id);
+			}
 		}
+
+		filtered.forEach((round, idx) => {
+			let el = byId.get(round.id);
+			if (!el) {
+				el = createRoundEl(round, idx, refreshUI);
+			} else {
+				updateRoundEl(el, round, idx);
+			}
+			if (list.children[idx] !== el) {
+				list.insertBefore(el, list.children[idx] ?? null);
+			}
+		});
 	}
 
-	filtered.forEach((round, idx) => {
-		let el = byId.get(round.id);
-		if (!el) {
-			el = createRoundEl(round, idx, _refreshUI);
-		} else {
-			updateRoundEl(el, round, idx);
-		}
-		if (list.children[idx] !== el) {
-			list.insertBefore(el, list.children[idx] ?? null);
-		}
-	});
+	// The hidden-rounds footer bar is managed outside round reconciliation: it
+	// is never a round row (no dataset.roundId, so byId skips it) and is
+	// (re)appended last so rounds always precede it — empty state included,
+	// where it is the only remaining way back to a hidden round.
+	if (hiddenCount === 0) {
+		list.querySelector(".hidden-bar")?.remove();
+	} else {
+		const bar = ensureHiddenBar(list, refreshUI);
+		const noun = hiddenCount === 1 ? "round" : "rounds";
+		bar.textContent = panel.showHiddenRounds
+			? `${hiddenCount} hidden ${noun} — click to hide again`
+			: `${hiddenCount} hidden ${noun} — click to show`;
+		bar.title = panel.showHiddenRounds
+			? "Stop showing hidden rounds in the list"
+			: "Show the hidden rounds in the list";
+		if (list.lastElementChild !== bar) list.appendChild(bar);
+	}
+}
+
+function ensureHiddenBar(
+	list: HTMLElement,
+	refreshUI: () => void,
+): HTMLElement {
+	let bar = list.querySelector(".hidden-bar") as HTMLElement | null;
+	if (!bar) {
+		bar = document.createElement("div");
+		bar.className = "hidden-bar";
+		bar.onclick = () => {
+			panel.showHiddenRounds = !panel.showHiddenRounds;
+			refreshUI();
+		};
+		list.appendChild(bar);
+	}
+	return bar;
 }

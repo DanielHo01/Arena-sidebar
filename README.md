@@ -1,6 +1,6 @@
 # Edge AI Sidebar
 
-> **版本**: 0.2.0 | **构建大小**: ~54 KB gzip:16.5 KB (content script) + 0.9 KB (inject hook)
+> **版本**: 0.2.0 | **构建大小**: ~58 KB gzip:18.6 KB (content script) + 0.9 KB (inject hook)
 
 Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持导出、摘要生成、标题自定义等功能。
 
@@ -16,6 +16,7 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ 点击跳转 + 滚动高亮（当前 round 自动跟随）
 - ✅ 正序/倒序切换
 - ✅ 实时搜索过滤
+- ✅ **隐藏轮次** — ✕ 隐藏 / ↩ 恢复，按会话持久化（`hidden-rounds:{sessionId}`），跨标签页同步
 - ✅ 实时检测新消息（MutationObserver + 轮询）
 
 ### 会话管理
@@ -62,7 +63,7 @@ D:\edge-ai-sidebar\
 │   ├── historyTitles.ts        双击改名 + 自定义标题恢复（138 行）
 │   ├── titleResolver.ts        标题解析 customTitle > title > sessionId（35 行）
 │   ├── state.ts                panel / fab / cachedElements / timers（38 行）
-│   ├── rounds.ts               hiddenRoundIds（19 行）
+│   ├── rounds.ts               隐藏轮次标记：按会话持久化 + 跨标签同步
 │   ├── types.ts                共享类型（145 行）
 │   ├── manifest.json           MV3 源 manifest
 │   │
@@ -123,7 +124,7 @@ D:\edge-ai-sidebar\
 │
 ├── tests/
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
-│   └── unit/                   24 个测试文件，302 个用例
+│   └── unit/                   36 个测试文件，535 个用例
 │
 ├── scripts/
 │   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
@@ -240,15 +241,18 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 ## 自动化测试
 
 ```bash
-npm test              # 全套：镜像测试 + 真实源码测试
-npm run test:mirror   # 仅镜像测试（3 suites，20 assertions）
-npm run test:src      # 仅真实源码测试（3 suites，24 assertions）
+npm test                      # 全套 Vitest（jsdom 环境）
+npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
 ```
 
 **当前状态**：
 
-- ✅ Mirror suites 20/20 PASS
-- ✅ Real-source suites 24/24 PASS（computeRounds、conversationStore、resolveSessionTitle）
+- ✅ 36 个测试文件，535 个用例全部通过
+- ✅ 整体覆盖率 94% 语句 / 85.2% 分支 / 95.5% 函数
+- ✅ 按目录棘轮阈值全部通过：全局（42/42/45/42）、`src/core/**`（99/90/100/100）、`src/platform/**`（90/86/81/92）
+- ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算（70 KB / gzip 25 KB）
+
+（早期文档里的 `npm run test:mirror` / `test:src` 镜像测试脚本已在 Phase 0 迁移到 Vitest 时删除。）
 
 ---
 
@@ -309,7 +313,9 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 - 仅支持 arena.ai Direct / Max 模式（不支持 Battle 盲测模式）
 - 不支持消息编辑 / 删除 / 新建（只读）
 - 自定义标题保存在 `chrome.storage.local`（每个扩展实例独立）
-- 右键 Rename 依赖 `prompt()`（可替换为内联编辑框）
+- 隐藏轮次不持久化到 Direct Chat（无会话 id 可挂靠，与消息存储同生命周期）
+
+（早期记录的"右键 Rename 依赖 `prompt()`"已在 Phase 7 修复——双击与右键共用一个内联编辑器 `ui/inlineRename.ts`。）
 
 ---
 
