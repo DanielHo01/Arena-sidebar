@@ -5,7 +5,7 @@
 // resolver as parameters instead of reaching for the singletons.
 // Public exports:
 //   exportConversation — triggers the export modal
-//   summarizeRounds    — async entry point for the summary modal
+//   summarizeRounds    — entry point for the summary modal
 
 import type { SidebarMessage } from "../types";
 import {
@@ -15,9 +15,9 @@ import {
 	type SerializeInput,
 } from "../core/serialize";
 import { chatRounds, lookupModelName } from "../capture";
-import { capture } from "../state";
 import { getSessionId } from "../platform/route";
 import { h } from "./dom";
+import { copyText } from "../platform/clipboard";
 
 /** Assemble the pure serialize inputs from the live singletons. */
 function serializeInput(sessionId: string): SerializeInput {
@@ -69,20 +69,10 @@ export function showExportModal(
 		btn.onclick = onclick;
 		return btn;
 	};
+	actions.appendChild(makeBtn("📋 Copy JSON", () => void copyText(json)));
+	actions.appendChild(makeBtn("📋 Copy Markdown", () => void copyText(md)));
 	actions.appendChild(
-		makeBtn("📋 Copy JSON", () =>
-			navigator.clipboard.writeText(json).then(() => {}),
-		),
-	);
-	actions.appendChild(
-		makeBtn("📋 Copy Markdown", () =>
-			navigator.clipboard.writeText(md).then(() => {}),
-		),
-	);
-	actions.appendChild(
-		makeBtn("🔗 Copy link", () =>
-			navigator.clipboard.writeText(location.href).then(() => {}),
-		),
+		makeBtn("🔗 Copy link", () => void copyText(location.href)),
 	);
 	actions.appendChild(
 		makeBtn("💾 Download JSON", () =>
@@ -171,7 +161,7 @@ function buildSummaryActions(promptText: string, onClose: () => void) {
 		);
 	return h("div", { class: "summary-actions" }, [
 		btn("📋 Copy to clipboard", "", () => {
-			void navigator.clipboard.writeText(promptText).catch(() => {});
+			void copyText(promptText);
 		}),
 		btn("📥 Paste into current chat", "", () => pasteIntoChat(promptText)),
 		btn("🚀 Open new arena.ai chat", "primary", () =>
@@ -241,26 +231,34 @@ export function exportConversation(
 
 // ─── Summarize rounds ─────────────────────────────────────────────────────────────────
 
+/**
+ * Build the summary prompt for the given messages and show it.
+ *
+ * Deliberately has no re-entrancy guard. The old one set `capture.isSummarizing`
+ * around the body and cleared it in a `finally`, but this function is fully
+ * synchronous — buildSummaryPrompt and showSummaryModal both return without
+ * awaiting — so no second call can interleave and the flag could never be
+ * observed as true. It was dead state, and it lived in state.ts as the sole
+ * field of a `capture` object that has now been deleted.
+ *
+ * Re-invoking is harmless anyway: showSummaryModal removes any existing
+ * `.summary-modal` before appending, so a double click replaces rather than
+ * stacks.
+ */
 export function summarizeRounds(
 	messages: SidebarMessage[],
 	shadowRoot: ShadowRoot,
 ) {
-	if (capture.isSummarizing) return;
-	capture.isSummarizing = true;
-	try {
-		const prompt = buildSummaryPrompt({
-			...serializeInput(getSessionId(location.pathname)),
-			messages,
-		});
-		if (!prompt) {
-			showSummaryModal(
-				shadowRoot,
-				"(no rounds detected yet — wait for arena.ai to load the conversation)",
-			);
-			return;
-		}
-		showSummaryModal(shadowRoot, prompt);
-	} finally {
-		capture.isSummarizing = false;
+	const prompt = buildSummaryPrompt({
+		...serializeInput(getSessionId(location.pathname)),
+		messages,
+	});
+	if (!prompt) {
+		showSummaryModal(
+			shadowRoot,
+			"(no rounds detected yet — wait for arena.ai to load the conversation)",
+		);
+		return;
 	}
+	showSummaryModal(shadowRoot, prompt);
 }

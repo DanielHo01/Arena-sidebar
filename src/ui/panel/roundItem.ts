@@ -7,6 +7,7 @@ import { hiddenRoundIds } from "../../rounds";
 import { getMessagesForRound, scrollToRound } from "../../features/roundNav";
 import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
+import { copyText } from "../../platform/clipboard";
 
 // ─── Round element ──────────────────────────────────────────────────────────────────
 
@@ -48,13 +49,19 @@ export function createRoundEl(
 		e.stopPropagation();
 		const roundMsgs = getMessagesForRound(round.id);
 		const txt = roundMsgs.map((m) => `[${m.role}] ${m.content}`).join("\n\n");
-		if (txt)
-			navigator.clipboard.writeText(txt).then(() => {
-				copyBtn.textContent = "✅";
-				setTimeout(() => {
-					copyBtn.textContent = "📋";
-				}, 1200);
-			});
+		if (!txt) return;
+		// copyText never rejects and reports whether the write really happened,
+		// so a denied permission no longer shows a success tick.
+		void copyText(txt).then((ok) => {
+			copyBtn.textContent = ok ? "✅" : "⚠️";
+			copyBtn.title = ok
+				? "Copied"
+				: "Copy failed — check clipboard permission";
+			setTimeout(() => {
+				copyBtn.textContent = "📋";
+				copyBtn.title = "Copy round content";
+			}, 1200);
+		});
 	};
 
 	// Hide button

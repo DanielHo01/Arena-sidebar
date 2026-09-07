@@ -29,12 +29,6 @@ export const fab = {
 	position: null as { x: number; y: number } | null,
 };
 
-// ─── Capture state ───────────────────────────────────────────────────────────────
-
-export const capture = {
-	isSummarizing: false,
-};
-
 // ─── Timer refs (P1 #3 — replaces unsafe window.__aiSidebar* properties) ──────────
 
 export const timers = {
