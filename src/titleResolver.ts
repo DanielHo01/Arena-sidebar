@@ -10,10 +10,16 @@
 // round.title is deliberately NOT part of this chain — it is a per-round preview,
 // not a session title.
 
-/** Input shape — customTitle/title are optional; sessionId is required. */
+/**
+ * Input shape — customTitle/title are optional; sessionId is required.
+ *
+ * `| undefined` on both is required, not decorative: every real caller passes a
+ * `SessionMeta`, whose own optional fields are explicitly-undefined-able, and
+ * under exactOptionalPropertyTypes a bare `?:` here would reject that argument.
+ */
 export type SessionTitleInput = {
-	customTitle?: string;
-	title?: string;
+	customTitle?: string | undefined;
+	title?: string | undefined;
 	sessionId: string;
 };
 

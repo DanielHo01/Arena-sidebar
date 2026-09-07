@@ -58,24 +58,39 @@ export function indexCapturedByUser(
 	return idx;
 }
 
-function userIndexes(messages: SidebarMessage[]): number[] {
-	const list: number[] = [];
-	messages.forEach((m, idx) => {
-		if (m.role === "user") list.push(idx);
+/**
+ * A user turn paired with its position in the message list.
+ *
+ * Returning the message alongside the index is deliberate. Under
+ * noUncheckedIndexedAccess, `messages[idx]` is typed `SidebarMessage | undefined`
+ * even when `idx` provably came from this very array, which pushes every caller
+ * into a guard that can never fire -- and an unreachable guard is worse than no
+ * guard, because it reads as a real edge case and silently drops branch
+ * coverage. Carrying the message means callers never index at all.
+ */
+type UserTurn = { idx: number; msg: SidebarMessage };
+
+function userTurns(messages: SidebarMessage[]): UserTurn[] {
+	const list: UserTurn[] = [];
+	messages.forEach((msg, idx) => {
+		if (msg.role === "user") list.push({ idx, msg });
 	});
 	return list;
 }
 
-/** Assistants between a user turn and the next one. */
-function assistantsAfter(
+/**
+ * Assistant messages between one user turn and the next boundary.
+ *
+ * Takes explicit boundaries rather than looking the next turn up by index, so
+ * there is no `list[i + 1]` for the compiler to widen and no guard to write.
+ */
+function assistantsBetween(
 	messages: SidebarMessage[],
-	userIdx: number,
-	userIdxList: number[],
+	startIdx: number,
+	endIdx: number,
 ): SidebarMessage[] {
-	const nextUserIdx =
-		userIdxList[userIdxList.indexOf(userIdx) + 1] ?? messages.length;
 	return messages
-		.slice(userIdx + 1, nextUserIdx)
+		.slice(startIdx + 1, endIdx)
 		.filter((m) => m.role === "assistant");
 }
 
@@ -83,8 +98,12 @@ function assistantsAfter(
 
 export function buildSummaryPrompt(input: SerializeInput): string {
 	const { messages, captured, resolveModelName } = input;
-	const userIdxList = userIndexes(messages);
-	if (userIdxList.length === 0) return "";
+	const turns = userTurns(messages);
+	// Destructuring rather than `turns.length === 0`: same guard, but the
+	// narrowed `firstTurn` below needs no second check, so no branch here is
+	// unreachable.
+	const [firstTurn] = turns;
+	if (!firstTurn) return "";
 
 	const capturedByUser = indexCapturedByUser(captured);
 	const aLabel =
@@ -97,25 +116,27 @@ export function buildSummaryPrompt(input: SerializeInput): string {
 	let text =
 		'请用中文为以下对话的每一轮生成一个 JSON 总结。每个 round 一个对象，包含 title (≤40 字要点)、summary (≤100 字简述)。\n输出格式：{"rounds":[{"id":"...","title":"...","summary":"..."}]}\n\n';
 
-	// Assistant messages that precede the first user turn (system/persona preambles).
-	// userIdxList is non-empty here (guarded above), but the element type is still
-	// `number | undefined` under noUncheckedIndexedAccess.
-	const firstUserIdx = userIdxList[0] ?? 0;
+	// Assistant messages that precede the first user turn (system/persona
+	// preambles). Iterating a slice rather than indexing `messages[i]`: iteration
+	// yields `SidebarMessage`, not `SidebarMessage | undefined`, so there is no
+	// guard to write and therefore no unreachable branch to leave uncovered.
 	let leadContext = "";
-	for (let i = 0; i < firstUserIdx; i++) {
-		const m = messages[i];
-		if (m && m.role === "assistant") {
+	for (const m of messages.slice(0, firstTurn.idx)) {
+		if (m.role === "assistant") {
 			leadContext += `[前置助手消息]: ${m.content.slice(0, 800)}\n`;
 		}
 	}
 	if (leadContext) text += `\n=== 前置上下文 ===\n${leadContext}\n`;
 
-	userIdxList.forEach((userIdx, i) => {
-		const userMsg = messages[userIdx];
-		if (!userMsg) return;
-		const userContent = userMsg.content;
+	turns.forEach(({ idx, msg }, i) => {
+		const userContent = msg.content;
 		const cap = capturedByUser.get(userContent.slice(0, 200));
-		const assistants = assistantsAfter(messages, userIdx, userIdxList);
+		const nextTurn = turns[i + 1];
+		const assistants = assistantsBetween(
+			messages,
+			idx,
+			nextTurn ? nextTurn.idx : messages.length,
+		);
 		text += `\n=== Round ${i + 1} ===\n`;
 		text += `[用户问题]: ${userContent.slice(0, 800)}\n`;
 		if (assistants.length > 0) {
@@ -137,17 +158,26 @@ export function buildExportRounds(input: SerializeInput): ExportRound[] {
 	const { messages, sessionId, resolveModelName } = input;
 	const rounds = computeRounds(messages);
 	const capturedByUser = indexCapturedByUser(input.captured);
-	const userIdxList = userIndexes(messages);
+	const turns = userTurns(messages);
 
 	return rounds.map((round, i) => {
-		const userIdx = messages.findIndex(
-			(m) => m.id === round.id && m.role === "user",
-		);
-		const userMsg = userIdx >= 0 ? messages[userIdx] : undefined;
-		const userContent = userMsg?.content ?? round.title;
+		// `.find`-style lookup through `turns` rather than `findIndex` +
+		// `messages[idx]`. Indexing `turns` directly is what makes this terse:
+		// `turns[-1]` is already `undefined` and already typed as such, so there is
+		// no `pos >= 0 ? ... : undefined` ternary adding branches that only restate
+		// what the index already does.
+		const turnPos = turns.findIndex((t) => t.msg.id === round.id);
+		const turn = turns[turnPos];
+		const userContent = turn?.msg.content ?? round.title;
 		const cap = capturedByUser.get(userContent.slice(0, 200));
-		const assistants =
-			userIdx >= 0 ? assistantsAfter(messages, userIdx, userIdxList) : [];
+		const nextTurn = turns[turnPos + 1];
+		const assistants = turn
+			? assistantsBetween(
+					messages,
+					turn.idx,
+					nextTurn ? nextTurn.idx : messages.length,
+				)
+			: [];
 
 		let responses: ExportResponse[];
 		if (assistants.length > 0) {

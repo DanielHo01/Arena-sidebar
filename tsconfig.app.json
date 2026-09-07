@@ -43,7 +43,25 @@
     // index already fails the assertion loudly. The only way to silence them is
     // mechanical `!` or `?.`, which adds churn and hides nothing. The value of
     // this flag is in src/, where the arrays come from a page we do not control.
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    // Also outside the `strict` family. Makes `foo?: T` mean "may be absent"
+    // rather than "may be absent OR explicitly undefined", so a field that the
+    // code really does clear has to say so in its declaration.
+    //
+    // This one earns its keep: bindDomAnchors assigns `msg.domId = undefined`
+    // when an element is recycled, and computeRounds builds lead rounds with the
+    // preview fields explicitly undefined so pushRound's `??=` will not clobber
+    // a value a caller set. Both are real behaviour that a bare `?:` misstates.
+    // Enabling it cost 9 sites, fixed by making the declarations in types.ts and
+    // titleResolver.ts honest rather than by changing any behaviour.
+    "exactOptionalPropertyTypes": true
+    //
+    // noPropertyAccessFromIndexSignature was evaluated and deliberately NOT
+    // enabled. Its 22 errors are all pure syntax -- `el.dataset.roundId` would
+    // have to become `el.dataset["roundId"]`, and `o.content` on a
+    // Record<string, unknown> would have to become `o["content"]`. It catches no
+    // bug, and bracket notation on DOMStringMap is less readable than the
+    // property form every DOM codebase uses. Cost without benefit.
   },
   "include": ["src"]
 }
