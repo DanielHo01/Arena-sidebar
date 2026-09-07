@@ -13,12 +13,14 @@
     "format:check": "prettier --check .",
     "test": "npm run test:mirror && npm run test:unit",
     "test:mirror": "node scripts/test-content-extract.cjs && node scripts/test-round-grouping.cjs && node scripts/test-conversation-store.cjs",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
     "@types/chrome": "^0.2.0",
     "@types/node": "^24.13.2",
+    "@vitest/coverage-v8": "^5.0.0",
     "jsdom": "^25.0.1",
     "oxlint": "^1.69.0",
     "prettier": "^3.9.6",

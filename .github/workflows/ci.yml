@@ -1,59 +1,133 @@
 name: CI
 
+# Every gate below has been verified to actually fail on a real violation, not
+# just to exit 0. See docs/refactor-plan.md "CI 现状" for the verification table.
 on:
   push:
     branches: ["**"]
   pull_request:
 
-# The whole pipeline runs in ~5s locally; cancelling superseded runs on the
-# same ref keeps feedback fast without risking main.
+# A push to a branch that also has an open PR fires both triggers. Cancelling
+# superseded runs at least keeps that from stacking up wasted minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   verify:
-    name: format · lint · typecheck · test · build
+    name: Verify
     runs-on: ubuntu-latest
-
+    env:
+      # Extension bundle budget, in bytes. The built bundle is 54 kB today and
+      # there is no reason for it to grow silently -- this is a real assertion,
+      # not a summary line. Raise it only in a commit that explains why.
+      BUNDLE_BUDGET_BYTES: 70000
+      BUNDLE_GZIP_BUDGET_BYTES: 25000
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      - name: Install
+      - name: Install dependencies
         run: npm ci
 
-      - name: Format (Prettier)
+      - name: Check formatting
         run: npm run format:check
 
-      - name: Lint (oxlint)
+      - name: Lint
         run: npm run lint -- --max-warnings=0
 
-      - name: Typecheck (tsc)
+      - name: Typecheck
         run: npm run typecheck
 
       - name: Test
-        run: npm test
+        run: npm run test
 
       - name: Build
         run: npm run build
 
-      # Regression guard: bundle size must not silently grow.
-      # Baseline at 2951896 was content.ts 53.75 kB / gzip 16.53 kB.
-      - name: Report bundle size
+      - name: Check bundle budget
         run: |
-          echo "### Bundle size" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          ls -l dist/assets/*.js | awk '{printf "%-40s %8d bytes\n", $9, $5}' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          # Vite emits the content bundle as content.ts-<hash>.js (the source is
+          # content.ts). Exactly one file must match, or the budget would be
+          # silently checking nothing.
+          matches=$(find dist/assets -maxdepth 1 -name 'content.ts-*.js')
+          count=$(printf '%s\n' "$matches" | grep -c . || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 content bundle, found $count"
+            exit 1
+          fi
+          bundle="$matches"
+          size=$(stat -c %s "$bundle")
+          gzip_size=$(gzip -c9 "$bundle" | wc -c)
+          {
+            echo "## Bundle size"
+            echo "| asset | size | budget |"
+            echo "|---|---:|---:|"
+            echo "| \`$(basename "$bundle")\` | $size B | $BUNDLE_BUDGET_BYTES B |"
+            echo "| gzip -9 | $gzip_size B | $BUNDLE_GZIP_BUDGET_BYTES B |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "bundle=$size B  gzip=$gzip_size B"
+          if [ "$size" -gt "$BUNDLE_BUDGET_BYTES" ]; then
+            echo "::error::bundle $size B exceeds budget $BUNDLE_BUDGET_BYTES B"
+            exit 1
+          fi
+          if [ "$gzip_size" -gt "$BUNDLE_GZIP_BUDGET_BYTES" ]; then
+            echo "::error::gzip $gzip_size B exceeds budget $BUNDLE_GZIP_BUDGET_BYTES B"
+            exit 1
+          fi
+
+      - name: Validate built manifest
+        run: |
+          set -euo pipefail
+          test -f dist/manifest.json
+          node -e '
+            const m = require("./dist/manifest.json");
+            const fail = (msg) => { console.error("::error::" + msg); process.exit(1); };
+            if (m.manifest_version !== 3) fail("manifest_version is not 3");
+            for (const p of ["storage", "activeTab", "scripting"])
+              if (!m.permissions?.includes(p)) fail("missing permission: " + p);
+            const cs = m.content_scripts ?? [];
+            if (cs.length !== 2) fail("expected 2 content_scripts, got " + cs.length);
+            // The MAIN-world hook must run before the isolated-world content
+            // script, so its order in the array is load-bearing.
+            const main = cs.find((c) => c.world === "MAIN");
+            const isolated = cs.find((c) => !c.world);
+            if (!main) fail("no MAIN-world content script");
+            if (!isolated) fail("no isolated-world content script");
+            if (!main.js?.[0]?.includes("inject-hook")) fail("MAIN-world script is not inject-hook");
+            if (!isolated.js?.[0]?.includes("content")) fail("isolated-world script is not the content bundle");
+            if (cs.indexOf(main) !== 0) fail("MAIN-world hook must come first");
+            for (const c of cs) {
+              if (!c.matches?.some((u) => u.includes("arena.ai"))) fail("content script not scoped to arena.ai");
+              if (c.run_at !== "document_start") fail("run_at should be document_start");
+            }
+            console.log("manifest ok:", m.name, m.version);
+          '
+
+      - name: Coverage
+        run: npm run test:coverage
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist
+          retention-days: 7
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage
           retention-days: 7
