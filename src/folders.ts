@@ -13,8 +13,10 @@ import { resolveSessionTitle } from "./titleResolver";
 
 // ─── Default folders ─────────────────────────────────────────────────────────────────
 
-export const INBOX_ID = "inbox";
-export const ARCHIVE_ID = "archive";
+const INBOX_ID = "inbox";
+// Not exported: no external consumer. Folder deletion has no UI since phase10a,
+// so nothing outside this module needs to special-case the archive folder.
+const ARCHIVE_ID = "archive";
 
 const DEFAULT_FOLDERS: SessionFolder[] = [
 	{ id: INBOX_ID, name: "Inbox", createdAt: 0, updatedAt: 0 },

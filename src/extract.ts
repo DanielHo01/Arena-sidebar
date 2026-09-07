@@ -6,10 +6,6 @@
 import type { SidebarMessage } from "./types";
 import { cachedElements } from "./state";
 
-// P0 #1 — cooldown prevents expensive full-DOM scans on every MutationObserver trigger.
-// P0 #1 — cooldown prevents expensive full-DOM scans on every MutationObserver trigger.
-export const EXTRACT_COOLDOWN_MS = 800;
-
 // ─── DOM change detection ─────────────────────────────────────────────────────────────
 // Avoid re-extracting when DOM hasn't changed since last extract.
 // Uses content-aware signature: element count + role sequence + first/last content.

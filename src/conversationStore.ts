@@ -307,7 +307,6 @@ export function extractBootstrapMessages(): SidebarMessage[] {
 							id: "boot-" + results.length,
 							role: detectRole(content),
 							content,
-							roundIndex: -1,
 							origin: "bootstrap",
 							fingerprint: fp,
 						});
@@ -341,7 +340,6 @@ function findMessagesInObject(
 			id: "boot-" + path.join("-") + "-" + results.length,
 			role: o.role as "user" | "assistant",
 			content: String(o.content).slice(0, 10000),
-			roundIndex: -1,
 			origin: "bootstrap",
 			fingerprint: fingerprint(String(o.content)),
 		});
@@ -375,27 +373,6 @@ function detectRole(content: string): "user" | "assistant" {
 export function addCapturedMessage(msg: SidebarMessage): boolean {
 	msg.origin = "capture";
 	return upsertMessage(msg);
-}
-
-// ─── DOM: add extracted messages to store (no anchor binding here) ──────────────────
-
-export function addDomMessages(
-	domMessages: SidebarMessage[],
-): SidebarMessage[] {
-	const added: SidebarMessage[] = [];
-	for (const m of domMessages) {
-		const fp = fingerprint(m.content);
-		const added_msg: SidebarMessage = {
-			id: m.id,
-			role: m.role === "system" ? "assistant" : m.role,
-			content: m.content,
-			roundIndex: -1,
-			origin: "dom",
-			fingerprint: fp,
-		};
-		if (upsertMessage(added_msg)) added.push(added_msg);
-	}
-	return added;
 }
 
 // ─── Anchor binding: bind DOM elements to canonical messages by fingerprint ─────────
@@ -434,16 +411,6 @@ export function bindDomAnchors() {
 // ─── Rebuild rounds from canonical messages ─────────────────────────────────────────
 
 export function rebuildRounds() {
-	// Assign roundIndex to each message.
-	let currentRound = -1;
-	for (const msg of conversationStore.messages) {
-		if (msg.role === "assistant" && currentRound === -1) {
-			// lead assistant, stays in same round
-		} else if (msg.role === "user") {
-			currentRound++;
-		}
-		msg.roundIndex = currentRound === -1 ? 0 : currentRound;
-	}
 	conversationStore.rounds = computeRounds(conversationStore.messages);
 }
 
@@ -480,7 +447,6 @@ export function refreshStore(opts: {
 				id: m.id,
 				role: m.role === "system" ? "assistant" : m.role,
 				content: m.content,
-				roundIndex: -1,
 				origin: "dom",
 				fingerprint: fp,
 			});

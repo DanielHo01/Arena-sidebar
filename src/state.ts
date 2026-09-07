@@ -1,15 +1,6 @@
 // Shared mutable state — panel/FAB/timer state only.
 // Message data moved to conversationStore.ts for multi-source management.
 
-// ─── Immutable config ─────────────────────────────────────────────────────────────────
-
-export const CONFIG = {
-	EXTRACT_COOLDOWN_MS: 500,
-	DEBOUNCE_MS: 800,
-	CAPTURE_INTERVAL_MS: 2000,
-	REFRESH_INTERVAL_MS: 30000,
-} as const;
-
 // ─── DOM element registry (written by extract.ts, read by rounds.ts, conversationStore.ts) ──
 
 export const cachedElements = new Map<string, Element>();

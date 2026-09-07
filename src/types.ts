@@ -29,8 +29,6 @@ export interface SidebarMessage {
 	fingerprint?: string;
 	/** DOM anchor id (set by bindDomAnchors pass) */
 	domId?: string;
-	/** Zero-based round index this message belongs to */
-	roundIndex?: number;
 	/** Where this message was first observed */
 	origin?: MessageOrigin;
 	/** Timestamp from capture source */
