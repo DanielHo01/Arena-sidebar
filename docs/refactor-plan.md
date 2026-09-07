@@ -310,15 +310,50 @@ function setupHistoryContextMenu(): Disposer   // 幂等 + 可卸载
 
 > 原则：**每阶段独立可交付、可回滚、有明确验收**。禁止跨阶段大爆炸式重写。
 
-### Phase 0 — 安全网与地基（不改任何行为）
+### Phase 0 — 安全网与地基（不改任何行为） ✅ 已完成
 
 先建防护，再动刀。
 
-- [ ] GitHub Actions：`install → lint → typecheck → test → build`（`npm test` + `npm run build` 合计 < 5 s，完全跑得动）
-- [ ] Prettier + `.editorconfig`，全仓格式化（**独立 commit**，与逻辑改动分离便于 review）
-- [ ] `.oxlintrc.json` 移除 react 插件；tsconfig 移除 `jsx: "react-jsx"`、显式加 `strict: true`
-- [ ] 删死代码：`CONFIG`、`addDomMessages`、`EXTRACT_COOLDOWN_MS`（两处）、`ARCHIVE_ID` 导出、`roundIndex`（含 `rebuildRounds` 的空转循环）
-- **验收**：`npm test` / `lint` / `build` 全绿；bundle 体积 ≤ 53.75 kB（应略降）；`git diff` 中无行为改动
+- [x] GitHub Actions：`install → format:check → lint → typecheck → test → build`
+- [x] Prettier + `.editorconfig`，全仓格式化（**独立 commit**，与逻辑改动分离便于 review）
+- [x] `.oxlintrc.json` 移除 react 插件；tsconfig 移除 `jsx: "react-jsx"`、显式加 `strict: true`
+- [x] 删死代码：`CONFIG`、`addDomMessages`、`EXTRACT_COOLDOWN_MS`（两处）、`INBOX_ID`/`ARCHIVE_ID` 导出、`roundIndex`（含 `rebuildRounds` 的空转循环）、`src/background.ts`
+- [x] **计划外但必须做**：修锁文件 —— 28 条 `resolved` 指向已死的 `registry.npmmirror.com`，`npm ci` 直接 ECONNRESET，CI 根本跑不起来
+- **验收结果**：
+
+| 项 | 结果 |
+| --- | --- |
+| CI 全链路 | **ALL GREEN，11.94 s**（install 3.4 / format 1.5 / lint 0.2 / typecheck 2.6 / test 1.3 / build 3.0） |
+| 纯格式化证明 | **bundle 哈希逐字节相同** `content.ts-Bv-vwOyh.js`（格式化前后同一个 hash） |
+| 死代码清理 | 净 **−60 行**；`CONFIG` / `addDomMessages` / `EXTRACT_COOLDOWN_MS` / `roundIndex` 在 `src/` 中出现次数均为 **0** |
+| bundle | 53.75 → **53.53 kB**；gzip 16.53 → **16.48 kB** |
+| 测试 | 断言数不变（mirror 20/20，real-source 10+8+6）→ 未删到被测逻辑 |
+| lint | 20 warnings / 0 errors（移除 react 插件前后一致，说明那两条规则从未触发） |
+
+**Phase 0 提交序列**（每步独立可回滚）：
+
+```
+a5dccca refactor: remove dead code (net -60 lines)
+8f44c72 chore: pin strict mode explicitly, drop React leftovers from config
+693e455 ci: add GitHub Actions pipeline (format/lint/typecheck/test/build)
+987beef style: add Prettier + EditorConfig, format codebase (pure formatting)
+73afdb5 fix(ci): repoint 28 lockfile entries off dead npmmirror registry
+f3d511d docs: add systematic refactor plan (Phase 0-6)
+```
+
+**Phase 0 期间发现的两处新事实**（已写入后续阶段的输入）：
+
+1. **`strict` 其实早就生效** —— TS 6.0.3 默认启用 strict 族。`--showConfig` 里看不到 `strict`，但往 `src/` 放一个含隐式 any + null 解引用的探针文件，**不带任何 flag 也触发 TS7006 / TS18047**。全仓 0 错误 → 显式化是零成本，且能防止未来编译器默认值漂移。
+2. **Prettier 的 `tabWidth` 由 `.editorconfig` 决定** —— 现有代码是按 `tabWidth 2` 格式化的。实测：`tabWidth 2` → src/ 只动 31 行；`tabWidth 4` → 动 207 行。配置里已写死并注释原因。
+
+**推迟到 Phase 3 的严格项**（非零成本，需真实代码改动）：
+
+| flag | 新增错误数 |
+| --- | --- |
+| `noUncheckedIndexedAccess` | 9（**建议优先**，正好覆盖 rounds/messages 的数组越界风险） |
+| `noPropertyAccessFromIndexSignature` | 20 |
+| `exactOptionalPropertyTypes` | 10 |
+| `noImplicitOverride` | 0 → 已在 Phase 0 顺手加上 |
 
 ### Phase 1 — 修用户可见 bug（每个 bug 先加失败测试）
 
