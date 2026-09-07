@@ -33,9 +33,23 @@ function setNextDataOnly(payload: unknown): void {
 	document.body.appendChild(el);
 }
 
-function addInlineScript(text: string): void {
+/**
+ * Append an inline <script> carrying a JSON-ish fragment.
+ *
+ * jsdom EXECUTES classic scripts the moment they are inserted, and a bare
+ * `"content": "..."` fragment is not valid JavaScript — it throws a SyntaxError
+ * inside jsdom's resource queue, outside any try/catch in the module under
+ * test. With dangerouslyIgnoreUnhandledErrors:false that fails the whole run
+ * (locally it hides under file parallelism; on CI it does not).
+ *
+ * So the fragment is wrapped in a real assignment. Arena's own inline scripts
+ * are genuine JS too, so this is the faithful shape, and the regex under test
+ * still sees the same `"content": "..."` text.
+ */
+function addInlineScript(fragment: string): void {
 	const el = document.createElement("script");
-	el.textContent = text;
+	el.textContent =
+		fragment === "" ? "" : `window.__arenaState = { ${fragment} };`;
 	document.body.appendChild(el);
 }
 
@@ -128,9 +142,7 @@ describe("extractBootstrapMessages — __NEXT_DATA__", () => {
 
 describe("extractBootstrapMessages — inline scripts", () => {
 	it("recovers content from a script tag when there is no __NEXT_DATA__", () => {
-		addInlineScript(
-			'window.state = {"content": "a payload embedded in a script tag"};',
-		);
+		addInlineScript('"content": "a payload embedded in a script tag"');
 		const msgs = extractBootstrapMessages();
 		expect(msgs).toHaveLength(1);
 		expect(msgs[0].content).toBe("a payload embedded in a script tag");
@@ -139,7 +151,7 @@ describe("extractBootstrapMessages — inline scripts", () => {
 
 	it("deduplicates repeated content by fingerprint", () => {
 		const line = '"content": "the same text appears twice in the payload"';
-		addInlineScript(`x = { ${line}, ${line} };`);
+		addInlineScript(`${line}, ${line}`);
 		expect(extractBootstrapMessages()).toHaveLength(1);
 	});
 
