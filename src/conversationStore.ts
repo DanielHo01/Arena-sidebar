@@ -242,14 +242,41 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 
 // ─── Merge helpers ─────────────────────────────────────────────────────────────────
 
-/** Add a message to the store if not already present (by fingerprint or id). */
-function upsertMessage(msg: SidebarMessage): boolean {
-	const fp = msg.fingerprint || fingerprint(msg.content);
-	const fpKey = fp;
+/** Content-only dedup key for a message. */
+function baseKey(msg: SidebarMessage): string {
+	return msg.fingerprint || fingerprint(msg.content);
+}
 
-	// Check by fingerprint first (robust across re-extraction).
+/**
+ * Number each message by how many times its content already appeared earlier in
+ * this source's own ordered list. Two properties matter:
+ *   - re-extracting an unchanged DOM renumbers identically, so refresh stays
+ *     idempotent and does not duplicate anything;
+ *   - genuine repeats (the user really did send "继续" three times) get distinct
+ *     numbers and therefore survive as distinct turns.
+ * Cross-source merge still works because both DOM and capture enumerate their
+ * occurrences in the same chronological order, so capture's 0th "继续" lands on
+ * DOM's 0th.
+ */
+function withOccurrences(msgs: SidebarMessage[]): SidebarMessage[] {
+	const seen = new Map<string, number>();
+	return msgs.map((m) => {
+		const base = fingerprint(m.content);
+		const n = seen.get(base) ?? 0;
+		seen.set(base, n + 1);
+		return { ...m, fingerprint: base, occurrence: n };
+	});
+}
+
+/** Add a message to the store if not already present (by content + occurrence). */
+function upsertMessage(msg: SidebarMessage): boolean {
+	const base = baseKey(msg);
+	const occ = msg.occurrence ?? 0;
+	msg.fingerprint = base;
+	msg.occurrence = occ;
+
 	const existing = conversationStore.messages.find(
-		(m) => (m.fingerprint || fingerprint(m.content)) === fpKey,
+		(m) => baseKey(m) === base && (m.occurrence ?? 0) === occ,
 	);
 	if (existing) {
 		// Merge: preserve existing domId even if new source doesn't have it.
@@ -372,6 +399,19 @@ function detectRole(content: string): "user" | "assistant" {
 
 export function addCapturedMessage(msg: SidebarMessage): boolean {
 	msg.origin = "capture";
+	// Capture arrives one message at a time, so its occurrence index is the
+	// number of already-merged capture messages with the same content. That
+	// lines up with the DOM's own numbering for the normal case; if the hook
+	// installed late and missed earlier repeats, the worst case is that this
+	// message merges into the wrong occurrence and keeps DOM text instead of
+	// capture text — no message or round is lost.
+	const base = fingerprint(msg.content);
+	let n = 0;
+	for (const m of conversationStore.messages) {
+		if (m.origin === "capture" && baseKey(m) === base) n++;
+	}
+	msg.fingerprint = base;
+	msg.occurrence = n;
 	return upsertMessage(msg);
 }
 
@@ -430,27 +470,21 @@ export function refreshStore(opts: {
 		return;
 	}
 
-	// Priority merge: bootstrap → capture → dom.
-	for (const m of bootstrap) {
+	// Priority merge: bootstrap → capture → dom. Each source is numbered
+	// independently, so repeats inside one source survive while the same message
+	// seen by two sources still merges.
+	for (const m of withOccurrences(bootstrap)) {
 		upsertMessage({ ...m, origin: "bootstrap" });
 	}
-	for (const m of capture) {
+	for (const m of withOccurrences(capture)) {
 		upsertMessage({ ...m, origin: "capture" });
 	}
-	for (const m of dom) {
-		const fp = fingerprint(m.content);
-		const existing = conversationStore.messages.find(
-			(r) => (r.fingerprint || fingerprint(r.content)) === fp,
-		);
-		if (!existing) {
-			upsertMessage({
-				id: m.id,
-				role: m.role === "system" ? "assistant" : m.role,
-				content: m.content,
-				origin: "dom",
-				fingerprint: fp,
-			});
-		}
+	for (const m of withOccurrences(dom)) {
+		upsertMessage({
+			...m,
+			role: m.role === "system" ? "assistant" : m.role,
+			origin: "dom",
+		});
 	}
 
 	// Sprint 3.2: always bind anchors to keep DOM ↔ store in sync (even if no new messages).

@@ -27,6 +27,13 @@ export interface SidebarMessage {
 	content: string;
 	/** Stable content fingerprint for deduplication across sources */
 	fingerprint?: string;
+	/**
+	 * Which repeat of this content this message is, within its own source
+	 * stream (0-based). Without it, a user who sends the same short message
+	 * twice has both turns collapsed into one — see tests/unit/dedup.test.ts.
+	 * Re-extracting the same DOM renumbers identically, so it stays idempotent.
+	 */
+	occurrence?: number;
 	/** DOM anchor id (set by bindDomAnchors pass) */
 	domId?: string;
 	/** Where this message was first observed */
