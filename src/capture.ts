@@ -198,14 +198,12 @@ export function harvestModelNames(): number {
 		() =>
 			(
 				w.__NEXT_DATA__ as
-					| { props?: { pageProps?: { initialModels?: unknown[] } } }
-					| undefined
+					{ props?: { pageProps?: { initialModels?: unknown[] } } } | undefined
 			)?.props?.pageProps?.initialModels,
 		() =>
 			(
 				w.__NEXT_DATA__ as
-					| { props?: { pageProps?: { initialModelAId?: string } } }
-					| undefined
+					{ props?: { pageProps?: { initialModelAId?: string } } } | undefined
 			)?.props?.pageProps?.initialModelAId
 				? (w.__NEXT_DATA__ as { props?: { pageProps?: unknown } } | undefined)
 						?.props?.pageProps

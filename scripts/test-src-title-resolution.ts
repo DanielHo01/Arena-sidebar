@@ -14,7 +14,9 @@ function run(label: string, fn: () => void) {
 	}
 }
 
-console.log("test-src-title-resolution: resolveSessionTitle (real source import)");
+console.log(
+	"test-src-title-resolution: resolveSessionTitle (real source import)",
+);
 
 run("customTitle wins over title", () => {
 	assert.equal(

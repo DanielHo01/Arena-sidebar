@@ -406,4 +406,3 @@ export function ensureStyles(shadowRoot: ShadowRoot) {
 	s.textContent = UI_STYLES;
 	shadowRoot.appendChild(s);
 }
-

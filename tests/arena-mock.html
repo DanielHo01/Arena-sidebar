@@ -1,24 +1,71 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="UTF-8"><title>Mock arena.ai chat</title>
-<style>
-  body { font: 14px/1.5 system-ui, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 16px; }
-  [data-message-author-role] { margin: 16px 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; }
-  [data-message-author-role="user"] { background: #f5f5f5; }
-  [data-message-author-role="assistant"] { background: #fff; }
-  button, [role="button"], nav, [aria-hidden="true"] { display: none; }
-</style>
-</head>
-<body>
-  <h1>arena.ai chat mock (test fixture)</h1>
-  <div data-message-author-role="user"><p>What is AI?</p></div>
-  <div data-message-author-role="assistant"><p>AI is artificial intelligence — systems that perform tasks requiring human-like reasoning.</p></div>
-  <div data-message-author-role="user"><p>How does LLM work?</p></div>
-  <div data-message-author-role="assistant"><p>LLMs predict next tokens based on patterns learned from massive text corpora during training.</p></div>
-  <div data-message-author-role="user"><p>Show me an example.</p></div>
-  <div data-message-author-role="assistant"><p>Sure: 'The cat sat on the' → 'mat'. Each token predicted from prior context via transformer attention.</p></div>
-  <div data-message-author-role="user"><p>What's the difference between RAG and fine-tuning?</p></div>
-  <div data-message-author-role="assistant"><p>RAG retrieves context at inference time. Fine-tuning updates model weights. They solve different problems.</p></div>
-  <div aria-hidden="true" data-message-author-role="user"><p>hidden UI test - should not be detected</p></div>
-</body>
+	<head>
+		<meta charset="UTF-8" />
+		<title>Mock arena.ai chat</title>
+		<style>
+			body {
+				font:
+					14px/1.5 system-ui,
+					sans-serif;
+				max-width: 800px;
+				margin: 20px auto;
+				padding: 0 16px;
+			}
+			[data-message-author-role] {
+				margin: 16px 0;
+				padding: 12px;
+				border-radius: 8px;
+				border: 1px solid #ddd;
+			}
+			[data-message-author-role="user"] {
+				background: #f5f5f5;
+			}
+			[data-message-author-role="assistant"] {
+				background: #fff;
+			}
+			button,
+			[role="button"],
+			nav,
+			[aria-hidden="true"] {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>arena.ai chat mock (test fixture)</h1>
+		<div data-message-author-role="user"><p>What is AI?</p></div>
+		<div data-message-author-role="assistant">
+			<p>
+				AI is artificial intelligence — systems that perform tasks requiring
+				human-like reasoning.
+			</p>
+		</div>
+		<div data-message-author-role="user"><p>How does LLM work?</p></div>
+		<div data-message-author-role="assistant">
+			<p>
+				LLMs predict next tokens based on patterns learned from massive text
+				corpora during training.
+			</p>
+		</div>
+		<div data-message-author-role="user"><p>Show me an example.</p></div>
+		<div data-message-author-role="assistant">
+			<p>
+				Sure: 'The cat sat on the' → 'mat'. Each token predicted from prior
+				context via transformer attention.
+			</p>
+		</div>
+		<div data-message-author-role="user">
+			<p>What's the difference between RAG and fine-tuning?</p>
+		</div>
+		<div data-message-author-role="assistant">
+			<p>
+				RAG retrieves context at inference time. Fine-tuning updates model
+				weights. They solve different problems.
+			</p>
+		</div>
+		<div aria-hidden="true" data-message-author-role="user">
+			<p>hidden UI test - should not be detected</p>
+		</div>
+	</body>
 </html>

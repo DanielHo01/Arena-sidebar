@@ -117,4 +117,3 @@ export interface SessionMeta {
 	updatedAt: number;
 	url?: string;
 }
-

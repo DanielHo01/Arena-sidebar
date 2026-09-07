@@ -488,7 +488,7 @@ function refreshUI() {
 		host.setAttribute("data-ai-sidebar-rounds", String(storeRounds.length));
 		host.setAttribute("data-ai-sidebar-msgs", String(storeMessages.length));
 	}
-	}
+}
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
 function ensureUI() {

@@ -747,7 +747,9 @@ export function migrateHistoryTitles(): Promise<void> {
 			}
 			chrome.storage.local.remove(keysToRemove, () => {
 				if (chrome.runtime.lastError) {
-					console.warn("[AI Sidebar] migrateHistoryTitles: failed to remove old keys");
+					console.warn(
+						"[AI Sidebar] migrateHistoryTitles: failed to remove old keys",
+					);
 				} else {
 					console.log(
 						`[AI Sidebar] migrateHistoryTitles: migrated ${keysToRemove.length} key(s)`,

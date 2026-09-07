@@ -21,7 +21,9 @@ export function resetExtractState(): void {
 	lastExtractSig = "";
 }
 
-function domSignature(all: Array<{ el: Element; role: "user" | "assistant" }>): string {
+function domSignature(
+	all: Array<{ el: Element; role: "user" | "assistant" }>,
+): string {
 	if (all.length === 0) return "empty";
 	const first = all.find((x) => x.role === "user");
 	const last = [...all].reverse().find((x) => x.role === "assistant");

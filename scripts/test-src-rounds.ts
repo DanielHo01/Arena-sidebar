@@ -65,19 +65,22 @@ run("multi-assistant: assistantCount reflects total", () => {
 	assert.equal(rounds[0].messageCount, 3);
 });
 
-run("lead assistant (before first user) becomes own round, no userPreview", () => {
-	const rounds = computeRounds([
-		msg("a0", "assistant", "welcome"),
-		msg("u1", "user", "hi"),
-		msg("a1", "assistant", "reply"),
-	]);
-	assert.equal(rounds.length, 2);
-	assert.equal(rounds[0].userPreview, undefined);
-	assert.equal(rounds[0].assistantPreview, "welcome");
-	assert.equal(rounds[0].assistantCount, 1);
-	assert.equal(rounds[1].id, "u1");
-	assert.equal(rounds[1].assistantPreview, "reply");
-});
+run(
+	"lead assistant (before first user) becomes own round, no userPreview",
+	() => {
+		const rounds = computeRounds([
+			msg("a0", "assistant", "welcome"),
+			msg("u1", "user", "hi"),
+			msg("a1", "assistant", "reply"),
+		]);
+		assert.equal(rounds.length, 2);
+		assert.equal(rounds[0].userPreview, undefined);
+		assert.equal(rounds[0].assistantPreview, "welcome");
+		assert.equal(rounds[0].assistantCount, 1);
+		assert.equal(rounds[1].id, "u1");
+		assert.equal(rounds[1].assistantPreview, "reply");
+	},
+);
 
 run("lead assistant only (no user) -> single round", () => {
 	const rounds = computeRounds([msg("a0", "assistant", "opening")]);
@@ -111,10 +114,7 @@ run("title is first user content truncated to 80 chars", () => {
 });
 
 run("does not mutate input messages", () => {
-	const inputs = [
-		msg("u1", "user", "q"),
-		msg("a1", "assistant", "a"),
-	];
+	const inputs = [msg("u1", "user", "q"), msg("a1", "assistant", "a")];
 	const frozen = inputs.map((m) => ({ ...m }));
 	computeRounds(inputs);
 	assert.deepEqual(inputs, frozen);

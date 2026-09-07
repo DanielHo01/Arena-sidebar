@@ -3,4 +3,3 @@
 // Round grouping lives in conversationStore.computeRounds (single source of truth).
 
 export const hiddenRoundIds = new Set<string>();
-
