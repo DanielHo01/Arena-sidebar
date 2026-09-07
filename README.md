@@ -49,40 +49,97 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 
 ## 项目结构
 
+分层规则：`platform/` 是唯一接触浏览器 API 的层；`core/` 是纯逻辑、无 DOM 依赖；
+`features/` 是有状态的业务逻辑；`ui/` 只做渲染；`app/` 负责生命周期编排。
+依赖方向单向向下，根目录文件是入口与装配点。
+
 ```
 D:\edge-ai-sidebar\
 ├── src/
-│   ├── content.ts                  内容脚本（含完整 UI + preScroll）
-│   ├── conversationStore.ts        消息存储 + rounds 计算
-│   ├── extract.ts                 DOM 消息提取（12 个 selector）
-│   ├── capture.ts                 API / WebSocket 捕获
-│   ├── historyTitles.ts           双击改名 + 自定义标题恢复
-│   ├── folders.ts                 会话文件夹管理 + Session Library
-│   ├── titleResolver.ts          标题解析（customTitle > title > sessionId）
-│   ├── state.ts                  Panel / FAB / Timer 状态
-│   ├── types.ts                  共享类型
-│   ├── rounds.ts                 hiddenRoundIds（纯 Set）
-│   ├── manifest.json              MV3 源 manifest
-│   └── ui/
-│       ├── panel.ts               面板渲染 + reconcileList
-│       ├── fab.ts                浮动按钮
-│       └── modals.ts             导出 / 摘要模态框
+│   ├── content.ts              内容脚本入口：bootstrap + ensureUI（239 行）
+│   ├── conversationStore.ts    消息存储 + refreshStore 三源合并（275 行）
+│   ├── extract.ts              DOM 消息提取（238 行）
+│   ├── historyTitles.ts        双击改名 + 自定义标题恢复（138 行）
+│   ├── titleResolver.ts        标题解析 customTitle > title > sessionId（35 行）
+│   ├── state.ts                panel / fab / cachedElements / timers（38 行）
+│   ├── rounds.ts               hiddenRoundIds（19 行）
+│   ├── types.ts                共享类型（145 行）
+│   ├── manifest.json           MV3 源 manifest
+│   │
+│   ├── app/                    生命周期编排
+│   │   ├── loop.ts             MutationObserver + 2s 抓取轮询 + 30s 重扫（149 行）
+│   │   └── store.ts            resetSessionState + disposer 注册表（95 行）
+│   │
+│   ├── core/                   纯逻辑，无 DOM 依赖，覆盖率 99/90/100/100
+│   │   ├── fingerprint.ts      消息指纹（57 行）
+│   │   ├── renderKey.ts        渲染快路径的单一比较键（32 行）
+│   │   ├── rounds.ts           轮次分组（104 行）
+│   │   └── serialize.ts        导出 / 摘要 prompt 构建（240 行）
+│   │
+│   ├── platform/               浏览器 API 边界，chrome.storage 与 clipboard 各只此一处
+│   │   ├── arenaDom.ts         所有编码 arena.ai 结构知识的选择器与探针（142 行）
+│   │   ├── clipboard.ts        navigator.clipboard 唯一封装（58 行）
+│   │   ├── route.ts            SPA 路由解析（49 行）
+│   │   └── storage.ts          chrome.storage 唯一封装，永不 reject（138 行）
+│   │
+│   ├── features/               有状态业务逻辑
+│   │   ├── bootstrapExtract.ts 首屏 __NEXT_DATA__ 提取（118 行）
+│   │   ├── prescroll.ts        虚拟化历史预滚动（189 行）
+│   │   ├── roundNav.ts         轮次跳转（70 行）
+│   │   └── sessions.ts         文件夹 / 会话索引（228 行）
+│   │
+│   ├── capture.ts              抓取聚合入口（22 行）
+│   ├── capture/
+│   │   ├── chatCapture.ts      fetch 请求 / 响应配对（131 行）
+│   │   ├── models.ts           模型名收割（119 行）
+│   │   └── rsc.ts              __aiSidebarRsc 事件接收（91 行）
+│   │
+│   └── ui/                     渲染层
+│       ├── arenaSidebar.ts     注入 Arena 侧边栏的 Session Library（291 行）
+│       ├── contextMenu.ts      历史链接右键菜单（230 行）
+│       ├── dom.ts              h() 元素构造器（79 行）
+│       ├── fab.ts              浮动按钮（78 行）
+│       ├── icons.ts            图标（14 行）
+│       ├── inlineRename.ts     内联改名编辑器，双击与右键共用（99 行）
+│       ├── keyboard.ts         快捷键（88 行）
+│       ├── modals.ts           导出 / 摘要模态框（264 行）
+│       ├── render.ts           刷新与渲染调度（114 行）
+│       ├── panel.ts            面板入口（17 行）
+│       ├── panel/
+│       │   ├── highlight.ts    当前轮高亮（54 行）
+│       │   ├── list.ts         列表 reconcile（68 行）
+│       │   ├── roundItem.ts    单轮条目（158 行）
+│       │   └── skeleton.ts     面板骨架（161 行）
+│       ├── styles.ts           样式入口（15 行）
+│       └── styles/
+│           ├── arenaSidebar.ts ASL 命名空间，内联样式（73 行）
+│           ├── base.ts         基础样式（146 行）
+│           ├── contextMenu.ts  右键菜单样式（60 行）
+│           └── list.ts         列表样式（175 行）
+│
 ├── public/
-│   └── inject-hook.js            MAIN world 注入（API 拦截）
+│   ├── inject-hook.js          MAIN world 注入，只包装 window.fetch
+│   └── icons/                  扩展图标
+│
+├── tests/
+│   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
+│   └── unit/                   24 个测试文件，302 个用例
+│
 ├── scripts/
-│   ├── test-content-extract.cjs  jsdom 镜像测试
-│   ├── test-round-grouping.cjs  jsdom 镜像测试
-│   ├── test-conversation-store.cjs  jsdom 镜像测试
-│   ├── test-src-rounds.ts        真实源码测试（tsx）
-│   ├── test-src-store.ts         真实源码测试（tsx）
-│   └── test-src-title-resolution.ts  真实源码测试（tsx）
-├── dist/                        构建产物（直接加载到 Edge）
+│   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
+│
+├── dist/                       构建产物（直接加载到 Edge）
 ├── docs/
-│   └── rebaseline-phase10a.md   Phase 10A 死代码清理记录
+│   ├── plan.md
+│   ├── refactor-plan.md        Phase 0–7 重构规格
+│   └── rebaseline-phase10a.md  Phase 10A 死代码清理记录
+│
 ├── vite.config.ts
+├── vitest.config.ts            覆盖率棘轮阈值（全局 + src/core + src/platform）
 ├── package.json
-├── tsconfig.app.json
-└── tsconfig.test.json           测试脚本类型检查
+├── tsconfig.json
+├── tsconfig.app.json           应用配置，含 noUncheckedIndexedAccess 等严格开关
+└── tsconfig.test.json          scripts + tests 的类型检查
 ```
 
 ---

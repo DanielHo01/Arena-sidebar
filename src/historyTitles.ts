@@ -8,6 +8,7 @@ import { getSessionMeta, setSessionCustomTitle } from "./features/sessions";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
 import { queryHistoryLinks } from "./platform/arenaDom";
+import { beginInlineRename } from "./ui/inlineRename";
 import type { Disposer } from "./types";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
@@ -110,47 +111,17 @@ export function setupHistoryTitleEditing(): Disposer {
 		itemEl.title = (itemEl.title || "") + " | Double-click to rename";
 
 		// Double-click → inline edit. Hoisted into a named handler so it can be
-		// removed on teardown.
+		// removed on teardown. The editor itself is shared with the context menu's
+		// rename item; see ui/inlineRename.ts for why there is only one copy.
 		const handler = (e: Event) => {
 			e.preventDefault();
 			e.stopPropagation();
 			const target =
 				(e.target as HTMLElement).closest("span, div, p") || itemEl;
-			const oldText = (target.textContent || "").trim();
-			const input = document.createElement("input");
-			input.type = "text";
-			input.value = oldText;
-			input.style.cssText =
-				"width: 100%; min-width: 0; font: inherit; background: white; border: 1px solid #3b82f6; padding: 2px 4px; border-radius: 3px; color: black;";
-			target.textContent = "";
-			target.appendChild(input);
-			input.focus();
-			input.select();
-
-			let saved = false;
-			const save = () => {
-				if (saved) return;
-				saved = true;
-				const newText = (input.value || "").trim() || oldText;
-				setSessionCustomTitle(sid, newText);
-				target.textContent = newText;
-			};
-			const cancel = () => {
-				if (saved) return;
-				saved = true;
-				target.textContent = oldText;
-			};
-			input.addEventListener("blur", save);
-			input.addEventListener("keydown", (ev) => {
-				ev.stopPropagation();
-				if (ev.key === "Enter") {
-					ev.preventDefault();
-					input.blur();
-				}
-				if (ev.key === "Escape") {
-					input.removeEventListener("blur", save);
-					cancel();
-				}
+			beginInlineRename({
+				target,
+				initial: (target.textContent || "").trim(),
+				onCommit: (newText) => setSessionCustomTitle(sid, newText),
 			});
 		};
 		itemEl.addEventListener("dblclick", handler, true);

@@ -23,6 +23,7 @@ import {
 } from "../features/sessions";
 import { CONTEXT_MENU_CSS } from "./styles";
 import { h } from "./dom";
+import { beginInlineRename } from "./inlineRename";
 
 /** Holds the live registration so repeat calls are no-ops. See the disposer. */
 let contextMenuDisposer: Disposer | null = null;
@@ -46,7 +47,7 @@ function closeMenu(): void {
 	activeMenu = null;
 }
 
-/** "✏️ Rename" — prompts, then writes through to the folder index and the link. */
+/** "✏️ Rename" — inline edit on the link, then writes through to the index. */
 function buildRenameItem(
 	sessionId: string,
 	link: HTMLAnchorElement,
@@ -58,14 +59,20 @@ function buildRenameItem(
 			closeMenu();
 			const currentMeta = foldersState.sessions.get(sessionId);
 			const currentDisplay = resolveSessionTitle(currentMeta ?? { sessionId });
-			const newTitle = prompt("Rename this session:", currentDisplay);
-			if (newTitle === null || !newTitle.trim()) return;
-			const trimmed = newTitle.trim();
-			setSessionCustomTitle(sessionId, trimmed);
-			// Sync Arena's own link so the rename is visible without a reload.
-			link.title = trimmed;
-			const titleSpan = link.querySelector("span");
-			if (titleSpan) titleSpan.textContent = trimmed;
+			// Edit in place on the link rather than in a native prompt(): the
+			// prompt cannot be styled to match the extension, and jsdom does not
+			// implement it at all, which made this path untestable.
+			const target = link.querySelector("span") ?? link;
+			beginInlineRename({
+				target,
+				initial: currentDisplay,
+				onCommit: (trimmed) => {
+					setSessionCustomTitle(sessionId, trimmed);
+					// beginInlineRename already wrote target.textContent; the anchor's
+					// tooltip is the one thing it cannot know about.
+					link.title = trimmed;
+				},
+			});
 		},
 	});
 }
