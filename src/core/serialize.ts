@@ -98,16 +98,22 @@ export function buildSummaryPrompt(input: SerializeInput): string {
 		'请用中文为以下对话的每一轮生成一个 JSON 总结。每个 round 一个对象，包含 title (≤40 字要点)、summary (≤100 字简述)。\n输出格式：{"rounds":[{"id":"...","title":"...","summary":"..."}]}\n\n';
 
 	// Assistant messages that precede the first user turn (system/persona preambles).
+	// userIdxList is non-empty here (guarded above), but the element type is still
+	// `number | undefined` under noUncheckedIndexedAccess.
+	const firstUserIdx = userIdxList[0] ?? 0;
 	let leadContext = "";
-	for (let i = 0; i < userIdxList[0]; i++) {
-		if (messages[i].role === "assistant") {
-			leadContext += `[前置助手消息]: ${messages[i].content.slice(0, 800)}\n`;
+	for (let i = 0; i < firstUserIdx; i++) {
+		const m = messages[i];
+		if (m && m.role === "assistant") {
+			leadContext += `[前置助手消息]: ${m.content.slice(0, 800)}\n`;
 		}
 	}
 	if (leadContext) text += `\n=== 前置上下文 ===\n${leadContext}\n`;
 
 	userIdxList.forEach((userIdx, i) => {
-		const userContent = messages[userIdx].content;
+		const userMsg = messages[userIdx];
+		if (!userMsg) return;
+		const userContent = userMsg.content;
 		const cap = capturedByUser.get(userContent.slice(0, 200));
 		const assistants = assistantsAfter(messages, userIdx, userIdxList);
 		text += `\n=== Round ${i + 1} ===\n`;
@@ -137,7 +143,8 @@ export function buildExportRounds(input: SerializeInput): ExportRound[] {
 		const userIdx = messages.findIndex(
 			(m) => m.id === round.id && m.role === "user",
 		);
-		const userContent = userIdx >= 0 ? messages[userIdx].content : round.title;
+		const userMsg = userIdx >= 0 ? messages[userIdx] : undefined;
+		const userContent = userMsg?.content ?? round.title;
 		const cap = capturedByUser.get(userContent.slice(0, 200));
 		const assistants =
 			userIdx >= 0 ? assistantsAfter(messages, userIdx, userIdxList) : [];

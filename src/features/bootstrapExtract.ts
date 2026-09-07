@@ -40,7 +40,11 @@ export function extractBootstrapMessages(): SidebarMessage[] {
 				/"(content|text|userMessage|assistantMessage)"\s*:\s*"((?:[^"\\]|\\.){10,5000})"/g,
 			);
 			for (const m of matches) {
-				const content = m[2].replace(/\\"/g, '"').replace(/\\n/g, "\n");
+				// Capture group 2 is guaranteed by the pattern, but its type is
+				// still `string | undefined` under noUncheckedIndexedAccess.
+				const raw = m[2];
+				if (raw === undefined) continue;
+				const content = raw.replace(/\\"/g, '"').replace(/\\n/g, "\n");
 				if (content.length > 5) {
 					const fp = fingerprint(content);
 					if (

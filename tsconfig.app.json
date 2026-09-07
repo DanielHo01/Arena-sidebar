@@ -30,7 +30,20 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // Not part of the `strict` family, so it has to be named. `arr[i]` is typed
+    // `T` rather than `T | undefined` without it, which is a lie for any array
+    // whose length the compiler cannot see -- exactly the case for everything
+    // parsed off arena.ai. Enabling it found 9 sites; all were narrowed with real
+    // guards rather than `!`, because an assertion here would just re-hide the
+    // bug this flag exists to surface.
+    //
+    // Deliberately NOT enabled in tsconfig.test.json. There it costs 67 errors,
+    // nearly all of the form `expect(msgs[0].content)`, where an out-of-range
+    // index already fails the assertion loudly. The only way to silence them is
+    // mechanical `!` or `?.`, which adds churn and hides nothing. The value of
+    // this flag is in src/, where the arrays come from a page we do not control.
+    "noUncheckedIndexedAccess": true
   },
   "include": ["src"]
 }

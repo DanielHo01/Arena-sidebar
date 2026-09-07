@@ -51,14 +51,18 @@ export function getMessagesForRound(roundId: string): SidebarMessage[] {
 	const rounds = conversationStore.rounds;
 	const idx = rounds.findIndex((r) => r.id === roundId);
 	if (idx < 0) return [];
+	const round = rounds[idx];
+	if (!round) return [];
 	const startMsgIdx = conversationStore.messages.findIndex(
-		(m) => m.id === rounds[idx].id,
+		(m) => m.id === round.id,
 	);
 	if (startMsgIdx < 0) return [];
-	const endIdx =
-		idx + 1 < rounds.length
-			? conversationStore.messages.findIndex((m) => m.id === rounds[idx + 1].id)
-			: conversationStore.messages.length;
+	// No next round means "to the end". A next round whose message cannot be found
+	// keeps findIndex's -1, matching the previous behaviour.
+	const nextRound = rounds[idx + 1];
+	const endIdx = nextRound
+		? conversationStore.messages.findIndex((m) => m.id === nextRound.id)
+		: conversationStore.messages.length;
 	return conversationStore.messages.slice(
 		startMsgIdx,
 		endIdx > startMsgIdx ? endIdx : conversationStore.messages.length,

@@ -210,6 +210,7 @@ export async function migrateHistoryTitles(): Promise<void> {
 		const match = /^historyTitle_(.+)$/.exec(key);
 		if (match && typeof value === "string" && value.trim()) {
 			const sid = match[1];
+			if (!sid) continue;
 			setSessionCustomTitle(sid, value.trim());
 			keysToRemove.push(key);
 		}
