@@ -399,8 +399,9 @@ describe("content.ts assembler", () => {
 			const onDone = m.startPreScroll.mock.calls[0]![0] as () => void;
 
 			onDone();
-			await Promise.resolve();
-			await Promise.resolve();
+			// The real rebuild awaits several mocked async deps before the
+			// chained render fires; flush the microtask queue generously.
+			for (let i = 0; i < 10; i++) await Promise.resolve();
 
 			expect(m.refreshStore).toHaveBeenCalled();
 			expect(m.renderUI.mock.calls.length).toBeGreaterThan(1);

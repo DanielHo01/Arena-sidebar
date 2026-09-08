@@ -370,6 +370,44 @@ describe("renderUI", () => {
 		});
 	});
 
+	describe("reveal mode exit", () => {
+		it("exits reveal mode once nothing is hidden, so a later cross-tab hide filters the round", () => {
+			// Browser-E2E-found: reveal mode used to survive restoring the
+			// last hidden round, so the next hidden change — e.g. written by
+			// another tab — rendered the round dimmed-with-↩ instead of
+			// filtered out with the normal bottom bar.
+			conversationStore.rounds = [round("r1"), round("r2")];
+			conversationStore.messages = [
+				{ id: "m1", role: "user", content: "hi", sessionId: "s" },
+			];
+			panel.isOpen = true;
+			panel.showHiddenRounds = true; // reveal was on, everything got restored
+			renderUI(shadow, onRefresh);
+
+			expect(panel.showHiddenRounds).toBe(false);
+
+			// And with reveal mode off, hiding again is a render the fast
+			// path must not swallow: hiddenRoundIds is part of the key.
+			clearCalls();
+			hiddenRoundIds.add("r1");
+			renderUI(shadow, onRefresh);
+			expect(hooks.reconcileList).toHaveBeenCalledTimes(1);
+		});
+
+		it("keeps reveal mode on while hidden rounds remain", () => {
+			conversationStore.rounds = [round("r1"), round("r2")];
+			conversationStore.messages = [
+				{ id: "m1", role: "user", content: "hi", sessionId: "s" },
+			];
+			panel.isOpen = true;
+			panel.showHiddenRounds = true;
+			hiddenRoundIds.add("r2");
+			renderUI(shadow, onRefresh);
+
+			expect(panel.showHiddenRounds).toBe(true);
+		});
+	});
+
 	describe("host attribute sync", () => {
 		beforeEach(() => {
 			conversationStore.rounds = [round("r1"), round("r2")];

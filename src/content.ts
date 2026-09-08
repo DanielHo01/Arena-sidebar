@@ -211,15 +211,19 @@ try {
 			window.addEventListener("pagehide", disposeAll, { once: true });
 			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
 			startPreScroll(() => {
-				// After pre-scroll: extract + rebuild for current route.
-				void rebuildForCurrentRoute();
-				console.log(
-					"[AI Sidebar] store: total messages=" +
-						conversationStore.messages.length +
-						" rounds=" +
-						conversationStore.rounds.length,
-				);
-				refreshUI();
+				// After pre-scroll: extract + rebuild for the current route. The
+				// rebuild is async (storage restore), and re-rendering before it
+				// lands races an empty store — on a quiet page nothing else would
+				// trigger another render until the 30s rescan. Render after.
+				void rebuildForCurrentRoute().then(() => {
+					console.log(
+						"[AI Sidebar] store: total messages=" +
+							conversationStore.messages.length +
+							" rounds=" +
+							conversationStore.rounds.length,
+					);
+					refreshUI();
+				});
 			});
 		}
 	};

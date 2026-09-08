@@ -244,7 +244,44 @@ describe("startDomLoop", () => {
 
 		finishPreScroll();
 		expect(h.rebuildForCurrentRoute).toHaveBeenCalledTimes(1);
+		// refreshUI is chained after the (async) rebuild resolves, so it lands
+		// a microtask later — never before the restore has completed.
+		await Promise.resolve();
+		await Promise.resolve();
 		expect(h.refreshUI).toHaveBeenCalled();
+	});
+
+	it("does not re-render before the route change's rebuild has landed", async () => {
+		// Found by the browser E2E: the callback used to call refreshUI()
+		// synchronously next to the void rebuild, racing an empty store. On a
+		// quiet page the next render was then 30s away.
+		window.history.pushState({}, "", "/c/aaa");
+		loop.initRouteState();
+		const h = hooks();
+		let release!: () => void;
+		h.rebuildForCurrentRoute.mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		startDom(h);
+
+		window.history.pushState({}, "", "/c/bbb");
+		await mutate();
+		vi.advanceTimersByTime(800);
+		const before = h.refreshUI.mock.calls.length;
+		finishPreScroll();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(h.rebuildForCurrentRoute).toHaveBeenCalledTimes(1);
+		expect(h.refreshUI.mock.calls.length).toBe(before);
+
+		release();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.refreshUI.mock.calls.length).toBe(before + 1);
 	});
 
 	it("re-subscribes hidden-round sync per route change", async () => {

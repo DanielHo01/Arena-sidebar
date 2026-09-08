@@ -81,6 +81,14 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 	const storeRounds = conversationStore.rounds;
 	const msgCount = conversationStore.messages.length;
 
+	// Reveal mode with nothing hidden is meaningless: the user restored every
+	// round (or another tab did). Exit it here, or the next hidden change —
+	// e.g. a cross-tab sync — renders the round dimmed-with-↩ instead of
+	// filtered out. Browser-E2E-found (cross-tab hide step).
+	if (panel.showHiddenRounds && hiddenRoundIds.size === 0) {
+		panel.showHiddenRounds = false;
+	}
+
 	const key = renderKey({
 		isOpen: panel.isOpen,
 		searchQuery: panel.searchQuery,

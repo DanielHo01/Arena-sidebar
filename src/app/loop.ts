@@ -83,8 +83,10 @@ function handleRouteChange(hooks: LoopHooks): void {
 	// and preScrollDone stayed true from bootstrap, so a switched-to session only
 	// ever showed the ~8 messages Arena had rendered.
 	void startPreScroll(() => {
-		void hooks.rebuildForCurrentRoute();
-		hooks.refreshUI();
+		// Re-render only once the rebuild has landed: refreshing before the
+		// async restore races an empty store, and a quiet page would then sit
+		// unrendered until the 30s rescan (found by the browser E2E).
+		void hooks.rebuildForCurrentRoute().then(() => hooks.refreshUI());
 	});
 }
 
