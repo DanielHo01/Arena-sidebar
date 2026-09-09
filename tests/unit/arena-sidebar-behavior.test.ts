@@ -367,7 +367,10 @@ describe("folders storage sync", () => {
 
 		emitFoldersChange({
 			sessions: [
-				["aaa", session("aaa", { title: "Arena title", customTitle: "New title" })],
+				[
+					"aaa",
+					session("aaa", { title: "Arena title", customTitle: "New title" }),
+				],
 			],
 		});
 
