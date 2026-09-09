@@ -140,3 +140,58 @@ export function resolveQuickNavContainer(): HTMLElement | null {
 	}
 	return probe.ok ? probe.el : null;
 }
+
+// ── Battle-mode detection (#14) ──────────────────────────────────────────────
+//
+// A battle round is two anonymous responses side by side plus a vote bar — not
+// the single user/assistant thread the extractor understands. When nothing
+// extracts, the store stays empty and the extension would show no UI at all,
+// with no hint why. detectBattleMode feeds the empty state so the panel can say
+// what is going on instead of "No messages detected".
+//
+// Two independent signals; either one fires. Detection ONLY renames the empty
+// state — when extraction does find messages, rounds render exactly as in
+// Direct Chat — so a miss degrades to today's message and can never break
+// round rendering. That is what makes the vote-label signal shippable while
+// its exact labels are still unverified on the live UI (the sandbox cannot
+// reach arena.ai; see tests/e2e/MANUAL-SMOKE.md §⑥ to confirm or adjust).
+//
+// Signal 1 — the Battle Mode tab is the active one. Arena is a shadcn/Tailwind
+// app, and shadcn Tabs render role="tab" with data-state="active"; the
+// aria-selected and aria-pressed variants cover a plain-toggle implementation.
+
+const ACTIVE_TAB_SELECTOR =
+	'[role="tab"][aria-selected="true"], [role="tab"][data-state="active"], button[aria-pressed="true"]';
+
+// Signal 2 — the battle vote bar. One label proves nothing (a chat about
+// voting mentions "tie"), so a quorum of distinct labels is required.
+const BATTLE_VOTE_PATTERNS: RegExp[] = [
+	/a is better/,
+	/b is better/,
+	/\btie\b/,
+	/both bad/,
+];
+const BATTLE_VOTE_QUORUM = 3;
+
+/**
+ * True when the page looks like an arena.ai battle (blind side-by-side)
+ * conversation: the Battle Mode tab is active, or a quorum of the battle
+ * vote labels is present. Scoped to `root` for tests; production passes
+ * nothing and scans the document.
+ */
+export function detectBattleMode(root: ParentNode = document): boolean {
+	const tabs = root.querySelectorAll(ACTIVE_TAB_SELECTOR);
+	for (const tab of tabs) {
+		if (/battle/i.test(tab.textContent || "")) return true;
+	}
+	const seen = new Set<number>();
+	const buttons = root.querySelectorAll('button, [role="button"]');
+	for (const btn of buttons) {
+		const text = (btn.textContent || "").toLowerCase();
+		BATTLE_VOTE_PATTERNS.forEach((pattern, i) => {
+			if (pattern.test(text)) seen.add(i);
+		});
+		if (seen.size >= BATTLE_VOTE_QUORUM) return true;
+	}
+	return false;
+}

@@ -29,6 +29,12 @@ export interface RenderKeyInput {
 	hiddenRoundIds: string[];
 	/** Reveal mode: hidden rounds render dimmed with a restore button. */
 	showHiddenRounds: boolean;
+	/**
+	 * Battle mode with an empty store (#14). Detection renames the empty
+	 * state, so without this field a vote bar appearing on an otherwise
+	 * unchanged page would not re-render the notice.
+	 */
+	battleMode: boolean;
 }
 
 /** Stable key over everything the rendered UI depends on. */
@@ -40,5 +46,6 @@ export function renderKey(input: RenderKeyInput): string {
 		input.roundIds,
 		input.hiddenRoundIds,
 		input.showHiddenRounds,
+		input.battleMode,
 	]);
 }

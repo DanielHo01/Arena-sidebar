@@ -39,6 +39,13 @@
 
 - [ ] 在一个**安静**(无流式输出)的页面切换会话 → 新会话的面板应立即渲染,而不是空白 30 秒后才出现(本轮 E2E 发现并修复的 bug)
 
+### ⑥ Battle 模式提示(#14)
+
+- [ ] 打开一个 Battle 对话(盲测双模型 + 投票按钮的页面)
+- [ ] 面板(或 FAB 点开后)应显示 `⚔️ Battle mode — round navigation isn't supported here yet`,而不是空白无 UI
+- [ ] 切回 Direct Chat / 普通 /c/ 会话 → 提示消失,轮次正常渲染
+- [ ] **附带确认**(决定 #14 检测规则是否要调):投票区按钮的真实文案是什么?目前按 "A is better / B is better / Tie / Both bad" 四选三猜的;另看一眼模式 tab 是不是 `role="tab"` + 选中态(aria-selected / data-state="active")
+
 ## 期望之外的表现 → 告诉我
 
 - 刷新后隐藏状态丢失 / 恢复成 4 轮

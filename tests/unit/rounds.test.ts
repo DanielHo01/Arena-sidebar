@@ -103,4 +103,23 @@ describe("computeRounds", () => {
 		computeRounds(inputs);
 		expect(inputs).toEqual(frozen);
 	});
+
+	it("battle shape: one user turn plus both anonymous replies stay one round (#14)", () => {
+		// A battle round is user → Model A → Model B. Grouping already treats
+		// "every assistant reply after a user turn" as one round — pin that so
+		// a future grouping change cannot silently split battles.
+		const rounds = computeRounds([
+			msg("u1", "user", "q1"),
+			msg("a1", "assistant", "A says one"),
+			msg("b1", "assistant", "B says two"),
+			msg("u2", "user", "q2"),
+			msg("a2", "assistant", "A says three"),
+			msg("b2", "assistant", "B says four"),
+		]);
+		expect(rounds).toHaveLength(2);
+		expect(rounds[0].assistantCount).toBe(2);
+		expect(rounds[1].assistantCount).toBe(2);
+		expect(rounds[0].title).toBe("q1");
+		expect(rounds[0].assistantPreview).toBe("A says one");
+	});
 });

@@ -82,6 +82,32 @@ describe("reconcileList", () => {
 		expect(list.querySelectorAll(".item")).toHaveLength(0);
 	});
 
+	it("names battle mode instead of 'no messages' when the store is empty (#14)", () => {
+		document.body.insertAdjacentHTML(
+			"beforeend",
+			"<button>A is better</button><button>B is better</button><button>Tie</button>",
+		);
+		reconcileList(list, [], refreshUI);
+
+		expect(list.querySelector(".empty")?.textContent).toBe(
+			"⚔️ Battle mode — round navigation isn't supported here yet",
+		);
+	});
+
+	it("keeps the generic message for an all-hidden list, even in battle", () => {
+		document.body.insertAdjacentHTML(
+			"beforeend",
+			"<button>A is better</button><button>B is better</button><button>Tie</button>",
+		);
+		hiddenRoundIds.add("a");
+		reconcileList(list, [round("a")], refreshUI);
+
+		expect(list.querySelector(".empty")?.textContent).toBe(
+			"No messages detected",
+		);
+		expect(list.querySelector(".hidden-bar")).not.toBeNull();
+	});
+
 	it("names the query when nothing matched it", () => {
 		panel.searchQuery = "zzz";
 		reconcileList(list, [round("a")], refreshUI);

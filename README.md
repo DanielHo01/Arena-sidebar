@@ -260,7 +260,7 @@ npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
 
 | 现象 | 原因 | 修复 |
 | --- | --- | --- |
-| 没有浮动按钮 | arena.ai 在 Battle mode（不渲染消息列表） | 切到 Direct Chat 或 Max mode |
+| 面板提示 Battle mode 不支持导航 | Battle 盲测是双模型并排 + 投票，与单线程提取不兼容 | 切到 Direct Chat 或 Max mode（看到提示本身说明检测正常） |
 | 浮动按钮在，点了没反应 | 页面没消息（0 messages） | 等待对话加载 |
 | 点了 round 没跳转 | DOM 提取失败（具体元素没匹配） | 见下"自定义 selectors" |
 | 跳转不准确 | arena 用虚拟滚动 | 滚动后等 DOM 更新再跳 |
@@ -310,12 +310,12 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 
 ## 已知限制
 
-- 仅支持 arena.ai Direct / Max 模式（不支持 Battle 盲测模式）
+- Battle 盲测模式仅显示提示（双模型并排导航暂不支持），Direct / Max 模式功能完整
 - 不支持消息编辑 / 删除 / 新建（只读）
 - 自定义标题保存在 `chrome.storage.local`（每个扩展实例独立）
 - 隐藏轮次不持久化到 Direct Chat（无会话 id 可挂靠，与消息存储同生命周期）
 
-（早期记录的"右键 Rename 依赖 `prompt()`"已在 Phase 7 修复——双击与右键共用一个内联编辑器 `ui/inlineRename.ts`。）
+（重命名已统一为右键菜单唯一入口：Phase 7 去掉 `prompt()` 改内联编辑器 `ui/inlineRename.ts`，#17 移除了双击路径，对齐 ChatGPT / Claude。）
 
 ---
 
