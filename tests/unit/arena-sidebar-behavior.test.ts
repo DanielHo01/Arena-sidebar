@@ -354,4 +354,24 @@ describe("folders storage sync", () => {
 		disposers.pop()!();
 		expect(storageListeners).toHaveLength(0);
 	});
+
+	it("repaints history-link titles on a remote rename (#11)", () => {
+		// The full cross-tab rename loop: tab A writes FOLDERS_KEY, tab B's
+		// memory reloads — and B's visible history links must follow without
+		// waiting for the next DOM mutation on an idle page.
+		document.body.insertAdjacentHTML(
+			"beforeend",
+			'<a href="/c/aaa"><span>Old title</span></a>',
+		);
+		track(setupFoldersStorageSync());
+
+		emitFoldersChange({
+			sessions: [
+				["aaa", session("aaa", { title: "Arena title", customTitle: "New title" })],
+			],
+		});
+
+		const link = document.body.querySelector('a[href="/c/aaa"]')!;
+		expect(link.querySelector("span")!.textContent).toBe("New title");
+	});
 });
