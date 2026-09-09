@@ -1,4 +1,5 @@
-// src/rounds.ts — per-session persistence of hidden-round flags.
+// src/rounds.ts — per-session persistence of hidden-round flags (#7) and
+// deleted-message tombstones (#15).
 //
 // Before this module grew a storage layer, ✕ was irreversible-but-forgotten:
 // nothing was written, nothing could be unhidden, and because round ids are
@@ -6,17 +7,27 @@
 // into the next one visited in the same tab. These tests pin the three halves
 // of the fix: the key design (namespaced by the real session id), the
 // load/persist lifecycle with its stale-load guard, and the cross-tab sync.
+// The tombstone describes below pin the same design for hard delete (🗑️),
+// keyed by message fingerprint + occurrence instead of round id.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	applyDeletedMessages,
 	applyHiddenRounds,
+	deletedMessageKeys,
+	deletedMessagesKey,
 	hiddenRoundIds,
 	hiddenRoundsKey,
+	loadDeletedMessages,
 	loadHiddenRounds,
+	persistDeletedMessages,
 	persistHiddenRounds,
+	resetDeletedMessages,
 	resetHiddenRounds,
+	setupDeletedMessagesSync,
 	setupHiddenRoundsSync,
+	tombstoneKey,
 } from "../../src/rounds";
 import { setStorageBackend } from "../../src/platform/storage";
 
@@ -305,5 +316,196 @@ describe("setupHiddenRoundsSync", () => {
 		// jsdom and the test backend have no chrome.storage.onChanged; the
 		// subscription must degrade to a no-op, not throw.
 		expect(() => setupHiddenRoundsSync("s1", vi.fn())).not.toThrow();
+	});
+});
+
+describe("tombstoneKey", () => {
+	it("keys a message by fingerprint + occurrence", () => {
+		expect(tombstoneKey("fp-9-hello", 0)).toBe("fp-9-hello#0");
+		expect(tombstoneKey("fp-9-hello", 2)).toBe("fp-9-hello#2");
+	});
+});
+
+describe("deletedMessagesKey", () => {
+	it("namespaces the key by the real session id", () => {
+		expect(deletedMessagesKey("aaa")).toBe(
+			"edge-ai-sidebar:deleted-messages:aaa",
+		);
+	});
+});
+
+describe("loadDeletedMessages", () => {
+	beforeEach(() => {
+		setStorageBackend(memoryBackend().backend);
+		resetDeletedMessages();
+	});
+	afterEach(() => setStorageBackend(null));
+
+	it("adopts the session and fills the set from storage", async () => {
+		const { data, backend } = memoryBackend();
+		data.set(deletedMessagesKey("s1"), ["fp-a#0", "fp-b#1"]);
+		setStorageBackend(backend);
+
+		await loadDeletedMessages("s1");
+
+		expect([...deletedMessageKeys]).toEqual(["fp-a#0", "fp-b#1"]);
+	});
+
+	it("treats a missing key as no tombstones", async () => {
+		await loadDeletedMessages("never-seen");
+		expect(deletedMessageKeys.size).toBe(0);
+	});
+
+	it("ignores garbage instead of throwing", async () => {
+		const { data, backend } = memoryBackend();
+		data.set(deletedMessagesKey("s1"), "not-an-array");
+		setStorageBackend(backend);
+
+		await loadDeletedMessages("s1");
+		expect(deletedMessageKeys.size).toBe(0);
+	});
+
+	it("means 'no tombstones' for an empty session id (direct chat)", async () => {
+		deletedMessageKeys.add("stale");
+		await loadDeletedMessages("");
+		expect(deletedMessageKeys.size).toBe(0);
+	});
+
+	it("drops a result that a newer load superseded (stale guard)", async () => {
+		const { data, backend } = memoryBackend();
+		data.set(deletedMessagesKey("aaa"), ["from-aaa"]);
+		data.set(deletedMessagesKey("bbb"), ["from-bbb"]);
+		let releaseA!: (v: unknown) => void;
+		const gateA = new Promise((resolve) => {
+			releaseA = resolve;
+		});
+		const slowBackend = {
+			...backend,
+			get: async (keys: string | string[] | null) => {
+				if (keys === deletedMessagesKey("aaa")) await gateA;
+				return backend.get(keys);
+			},
+		};
+		setStorageBackend(slowBackend);
+
+		const loadA = loadDeletedMessages("aaa");
+		const loadB = loadDeletedMessages("bbb");
+		await loadB;
+		expect([...deletedMessageKeys]).toEqual(["from-bbb"]);
+
+		releaseA(undefined);
+		await loadA;
+		expect([...deletedMessageKeys]).toEqual(["from-bbb"]);
+	});
+});
+
+describe("persistDeletedMessages", () => {
+	beforeEach(() => {
+		setStorageBackend(memoryBackend().backend);
+		resetDeletedMessages();
+	});
+	afterEach(() => setStorageBackend(null));
+
+	it("writes the live set under the adopted session's key", async () => {
+		const { data, backend } = memoryBackend();
+		setStorageBackend(backend);
+		await loadDeletedMessages("s1");
+
+		deletedMessageKeys.add("fp-x#0");
+		persistDeletedMessages();
+		// storageSet is fire-and-forget; flush the microtask queue.
+		await Promise.resolve();
+
+		expect(data.get(deletedMessagesKey("s1"))).toEqual(["fp-x#0"]);
+	});
+
+	it("is a no-op until a session is adopted", async () => {
+		const { data, backend } = memoryBackend();
+		setStorageBackend(backend);
+
+		deletedMessageKeys.add("fp-x#0");
+		persistDeletedMessages();
+		await Promise.resolve();
+
+		expect(data.size).toBe(0);
+	});
+});
+
+describe("applyDeletedMessages", () => {
+	beforeEach(() => resetDeletedMessages());
+
+	it("replaces the live set wholesale", () => {
+		deletedMessageKeys.add("old");
+		applyDeletedMessages(["a", "b"]);
+		expect([...deletedMessageKeys]).toEqual(["a", "b"]);
+	});
+
+	it("clears on a non-array value", () => {
+		deletedMessageKeys.add("old");
+		applyDeletedMessages(undefined);
+		expect(deletedMessageKeys.size).toBe(0);
+	});
+});
+
+describe("setupDeletedMessagesSync", () => {
+	beforeEach(() => {
+		resetDeletedMessages();
+		setStorageBackend(null);
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		setStorageBackend(null);
+	});
+
+	it("applies another tab's write and notifies", () => {
+		const chrome = stubChromeOnChanged();
+		deletedMessageKeys.add("fp-old#0");
+		const onChange = vi.fn();
+
+		setupDeletedMessagesSync("s1", onChange);
+		expect(chrome.count()).toBe(1);
+
+		chrome.fire(deletedMessagesKey("s1"), ["fp-new#0"]);
+		expect([...deletedMessageKeys]).toEqual(["fp-new#0"]);
+		expect(onChange).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips the echo of its own write", () => {
+		const chrome = stubChromeOnChanged();
+		deletedMessageKeys.add("fp-x#0");
+		const onChange = vi.fn();
+
+		setupDeletedMessagesSync("s1", onChange);
+		chrome.fire(deletedMessagesKey("s1"), ["fp-x#0"]);
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("ignores other keys", () => {
+		const chrome = stubChromeOnChanged();
+		const onChange = vi.fn();
+		setupDeletedMessagesSync("s1", onChange);
+
+		chrome.fire(deletedMessagesKey("other"), ["fp-x#0"]);
+		chrome.fire(hiddenRoundsKey("s1"), ["r9"]);
+
+		expect(deletedMessageKeys.size).toBe(0);
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("stops notifying after dispose", () => {
+		const chrome = stubChromeOnChanged();
+		const onChange = vi.fn();
+
+		const dispose = setupDeletedMessagesSync("s1", onChange);
+		dispose();
+		expect(chrome.count()).toBe(0);
+		chrome.fire(deletedMessagesKey("s1"), ["fp-x#0"]);
+		expect(deletedMessageKeys.size).toBe(0);
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("survives an absent chrome global (returns a no-op disposer)", () => {
+		expect(() => setupDeletedMessagesSync("s1", vi.fn())).not.toThrow();
 	});
 });

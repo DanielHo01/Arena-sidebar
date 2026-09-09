@@ -10,6 +10,7 @@ import {
 	HISTORY_LINK_SELECTOR,
 	SCROLL_CONTAINER_SELECTOR,
 	SIDEBAR_WRAPPER_SELECTOR,
+	detectBattleMode,
 	findArenaSidebarWrapper,
 	inspectArenaQuickNav,
 	queryHistoryLinks,
@@ -222,5 +223,83 @@ describe("resolveQuickNavContainer", () => {
 		resolveQuickNavContainer();
 		resolveQuickNavContainer();
 		expect(warn).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("detectBattleMode", () => {
+	it("fires when the Battle Mode tab is the active one (aria-selected)", () => {
+		document.body.innerHTML = `
+			<div role="tablist">
+				<div role="tab" aria-selected="false">Direct Chat</div>
+				<div role="tab" aria-selected="true">⚔️ Battle Mode</div>
+			</div>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires for the shadcn data-state=active variant", () => {
+		document.body.innerHTML = `
+			<div role="tablist">
+				<div role="tab" data-state="inactive">Direct Chat</div>
+				<div role="tab" data-state="active">Battle Mode</div>
+			</div>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires for a pressed battle toggle button", () => {
+		document.body.innerHTML = `<button aria-pressed="true">Battle</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("stays quiet when the battle tab is not the active one", () => {
+		document.body.innerHTML = `
+			<div role="tablist">
+				<div role="tab" aria-selected="true">Direct Chat</div>
+				<div role="tab" aria-selected="false">Battle Mode</div>
+			</div>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("fires when the full vote bar is present", () => {
+		document.body.innerHTML = `
+			<main>
+				<button>👍 A is better</button>
+				<button>👎 B is better</button>
+				<button>🤝 Tie</button>
+				<button>Both bad</button>
+			</main>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires at exactly three of the four vote labels", () => {
+		document.body.innerHTML = `
+			<button>A is better</button>
+			<button>B is better</button>
+			<button>Tie</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("stays quiet below quorum — a chat about voting is not a battle", () => {
+		document.body.innerHTML = `
+			<button>Tie</button>
+			<button>Both bad</button>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("counts non-button vote controls via role=button", () => {
+		document.body.innerHTML = `
+			<div role="button">A is better</div>
+			<div role="button">B is better</div>
+			<div role="button">Tie</div>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("ignores vote words in plain text — only controls count", () => {
+		document.body.innerHTML = `
+			<div>A is better than nothing, B is better still, tie them: both bad ideas</div>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("stays quiet on an empty document", () => {
+		expect(detectBattleMode()).toBe(false);
 	});
 });

@@ -9,7 +9,7 @@
 //    refreshUI's fast path skip the first render of the new session.
 //
 // 2. Route changes do not accumulate DOM listeners. setupHistoryContextMenu and
-//    setupHistoryTitleEditing both run again on every route change, so an
+//    setupHistoryTitles both run again on every route change, so an
 //    unguarded setup adds a fresh document listener each time. This is the
 //    regression test the refactor plan called for: simulate N route changes and
 //    assert the listener count is flat.
@@ -29,7 +29,7 @@ import {
 import { hiddenRoundIds } from "../../src/rounds";
 import { setupHistoryContextMenu } from "../../src/ui/contextMenu";
 import { toggleArenaSessionLibrarySection } from "../../src/ui/arenaSidebar";
-import { setupHistoryTitleEditing } from "../../src/historyTitles";
+import { setupHistoryTitles } from "../../src/historyTitles";
 import { fab, panel, cachedElements } from "../../src/state";
 
 // ─── Listener probe ──────────────────────────────────────────────────────────────
@@ -209,14 +209,14 @@ describe("route changes do not leak DOM listeners", () => {
 
 		// First route: the setups legitimately attach their listeners.
 		setupHistoryContextMenu();
-		setupHistoryTitleEditing();
+		setupHistoryTitles();
 		const baseline = added - removed;
 
 		for (let i = 0; i < 10; i++) {
 			resetSessionState("session-" + i);
 			// content.ts re-runs both of these on every route change.
 			setupHistoryContextMenu();
-			setupHistoryTitleEditing();
+			setupHistoryTitles();
 		}
 
 		expect(added - removed).toBe(baseline);
@@ -260,14 +260,14 @@ describe("resetSessionState clears the remaining residual states", () => {
 	it("a route change re-reads the title from foldersState", () => {
 		foldersState.sessions.set("aaa", meta("Old Title"));
 		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
-		setupHistoryTitleEditing();
+		setupHistoryTitles();
 		expect(document.querySelector("a")!.textContent).toContain("Old Title");
 
 		// Arena's own title changes, then the user navigates.
 		foldersState.sessions.set("aaa", meta("New Title"));
 		resetSessionState("aaa");
 		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
-		setupHistoryTitleEditing();
+		setupHistoryTitles();
 
 		expect(document.querySelector("a")!.textContent).toContain("New Title");
 		expect(document.querySelector("a")!.textContent).not.toContain("Old Title");
@@ -276,7 +276,7 @@ describe("resetSessionState clears the remaining residual states", () => {
 	it("a context-menu rename survives the next title restore", () => {
 		// Regression: the context-menu rename wrote foldersState and the link's DOM
 		// but not titleCache, while restoreTitle() trusted the cache first. Since
-		// loop.ts re-runs setupHistoryTitleEditing() on every debounced DOM change,
+		// loop.ts re-runs setupHistoryTitles() on every debounced DOM change,
 		// the stale cache silently reverted the rename a few hundred ms later --
 		// the user typed a new name, saw it take, then watched it flip back.
 		//
@@ -290,7 +290,7 @@ describe("resetSessionState clears the remaining residual states", () => {
 		// exercising the rename path it is meant to pin.
 		resetSessionState("aaa");
 		document.body.innerHTML = `<a href="/c/aaa"><span>placeholder</span></a>`;
-		setupHistoryTitleEditing();
+		setupHistoryTitles();
 		const link = document.querySelector("a")!;
 		expect(link.textContent).toContain("Old Title");
 
@@ -302,7 +302,7 @@ describe("resetSessionState clears the remaining residual states", () => {
 		expect(link.textContent).toContain("New Title");
 
 		// loop.ts:97 re-runs this on every debounced mutation.
-		setupHistoryTitleEditing();
+		setupHistoryTitles();
 
 		expect(link.textContent).toContain("New Title");
 		expect(link.textContent).not.toContain("Old Title");

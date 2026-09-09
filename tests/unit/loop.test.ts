@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 	ensureArenaFolderEntry: vi.fn(),
 	toggleArenaSessionLibrarySection: vi.fn(),
 	setupHistoryContextMenu: vi.fn(),
-	setupHistoryTitleEditing: vi.fn(),
+	setupHistoryTitles: vi.fn(),
 	onStorageChanged: vi.fn((_key: string, _h: (change: unknown) => void) =>
 		vi.fn(),
 	),
@@ -35,6 +35,7 @@ const store = vi.hoisted(() => ({
 vi.mock("../../src/conversationStore", () => ({
 	conversationStore: store,
 	refreshStore: mocks.refreshStore,
+	dropTombstonedMessages: vi.fn(() => false),
 }));
 vi.mock("../../src/extract", () => ({
 	extractMessages: mocks.extractMessages,
@@ -55,7 +56,7 @@ vi.mock("../../src/ui/contextMenu", () => ({
 	setupHistoryContextMenu: mocks.setupHistoryContextMenu,
 }));
 vi.mock("../../src/historyTitles", () => ({
-	setupHistoryTitleEditing: mocks.setupHistoryTitleEditing,
+	setupHistoryTitles: mocks.setupHistoryTitles,
 }));
 vi.mock("../../src/platform/storage", () => ({
 	onStorageChanged: mocks.onStorageChanged,
@@ -197,7 +198,7 @@ describe("startDomLoop", () => {
 		await mutate();
 		vi.advanceTimersByTime(1600);
 
-		expect(mocks.setupHistoryTitleEditing).toHaveBeenCalledTimes(2);
+		expect(mocks.setupHistoryTitles).toHaveBeenCalledTimes(2);
 	});
 
 	it("does nothing while the user is dragging the FAB", async () => {
@@ -302,13 +303,17 @@ describe("startDomLoop", () => {
 		const keys = mocks.onStorageChanged.mock.calls.map((c) => c[0]);
 		expect(keys).toEqual([
 			"edge-ai-sidebar:hidden-rounds:bbb",
+			"edge-ai-sidebar:deleted-messages:bbb",
 			"edge-ai-sidebar:hidden-rounds:ccc",
+			"edge-ai-sidebar:deleted-messages:ccc",
 		]);
 		const disposers = mocks.onStorageChanged.mock.results.map(
 			(r) => r.value as ReturnType<typeof vi.fn>,
 		);
-		expect(disposers[0]).toHaveBeenCalled(); // bbb's listener dropped
-		expect(disposers[1]).not.toHaveBeenCalled(); // ccc's still live
+		expect(disposers[0]).toHaveBeenCalled(); // bbb's hidden listener dropped
+		expect(disposers[1]).toHaveBeenCalled(); // bbb's tombstone listener dropped
+		expect(disposers[2]).not.toHaveBeenCalled(); // ccc's hidden still live
+		expect(disposers[3]).not.toHaveBeenCalled(); // ccc's tombstone still live
 	});
 
 	it("ignores query-string churn on a session route", async () => {

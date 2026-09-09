@@ -1,5 +1,6 @@
 // ui/contextMenu.ts — the right-click menu on Arena's native history links:
-// rename, move to folder.
+// rename, move to folder. Since #17 this menu is the only rename entry
+// (ChatGPT/Claude parity); double-click rename was removed.
 //
 // Setup is idempotent by construction: the module keeps the live Disposer and a
 // repeat call returns it instead of stacking a second set of document listeners.

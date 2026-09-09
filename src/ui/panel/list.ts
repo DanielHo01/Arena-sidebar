@@ -3,6 +3,7 @@
 import type { SidebarRound } from "../../types";
 import { hiddenRoundIds } from "../../rounds";
 import { panel } from "../../state";
+import { detectBattleMode } from "../../platform/arenaDom";
 import { getMessagesForRound } from "../../features/roundNav";
 import { createRoundEl, updateRoundEl } from "./roundItem";
 
@@ -49,9 +50,19 @@ export function reconcileList(
 				list.appendChild(e);
 				return e;
 			})();
-		msg.textContent = q
-			? 'No matches for "' + panel.searchQuery + '"'
-			: "No messages detected";
+		// Battle mode (#14): extraction understands single-thread chats, not the
+		// dual-column battle layout — say so instead of "No messages detected".
+		// Only when the store itself is empty: an all-hidden list in a battle is
+		// still the generic message plus the restore bar.
+		let emptyText: string;
+		if (q) {
+			emptyText = 'No matches for "' + panel.searchQuery + '"';
+		} else if (rounds.length === 0 && detectBattleMode()) {
+			emptyText = "⚔️ Battle mode — round navigation isn't supported here yet";
+		} else {
+			emptyText = "No messages detected";
+		}
+		msg.textContent = emptyText;
 	} else {
 		const emptyEl = list.querySelector(".empty");
 		if (emptyEl) emptyEl.remove();

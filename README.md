@@ -17,6 +17,8 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ 正序/倒序切换
 - ✅ 实时搜索过滤（标题 / 双预览 / 任意消息全文）
 - ✅ **隐藏轮次** — ✕ 隐藏 / ↩ 恢复，按会话持久化（`hidden-rounds:{sessionId}`），跨标签页同步
+- ✅ **编辑消息** — ✏️ 内联修正已发送的消息（仅扩展内可见，arena.ai 不动），防重提保护
+- ✅ **删除轮次** — 🗑️ 两次点击确认硬删除，指纹 tombstone 按会话持久化，刷新不复活，跨标签页同步
 - ✅ 实时检测新消息（MutationObserver + 轮询）
 
 ### 会话管理
@@ -24,7 +26,7 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ **Session Library** — 内嵌 Arena 左侧栏，可展开/折叠
 - ✅ **会话文件夹**（Inbox / Archive，自定义文件夹）
 - ✅ **右键菜单**（Rename / Move to folder）
-- ✅ **标题自定义** — 双击或右键 Rename，统一优先级：customTitle > title > sessionId 前缀
+- ✅ **标题自定义** — 右键 Rename（#17 后唯一入口），统一优先级：customTitle > title > sessionId 前缀
 - ✅ **持久化恢复** — 刷新后恢复 loaded rounds
 
 ### 导出与摘要
@@ -223,11 +225,11 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 
 ### 自定义标题
 
-在 arena.ai 左侧历史会话列表，双击任意标题即可编辑：
+在 arena.ai 左侧历史会话列表，右键任意会话 → ✏️ Rename 即可编辑（与 ChatGPT / Claude 一致的菜单式重命名）：
 
 - 自动保存到 `chrome.storage.local`
 - 下次访问自动应用
-- 提示文字：`Double-click to rename`
+- 提示文字：`Right-click to rename`
 
 ### 拖动浮动按钮
 
@@ -260,7 +262,7 @@ npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
 
 | 现象 | 原因 | 修复 |
 | --- | --- | --- |
-| 没有浮动按钮 | arena.ai 在 Battle mode（不渲染消息列表） | 切到 Direct Chat 或 Max mode |
+| 面板提示 Battle mode 不支持导航 | Battle 盲测是双模型并排 + 投票，与单线程提取不兼容 | 切到 Direct Chat 或 Max mode（看到提示本身说明检测正常） |
 | 浮动按钮在，点了没反应 | 页面没消息（0 messages） | 等待对话加载 |
 | 点了 round 没跳转 | DOM 提取失败（具体元素没匹配） | 见下"自定义 selectors" |
 | 跳转不准确 | arena 用虚拟滚动 | 滚动后等 DOM 更新再跳 |
@@ -310,12 +312,12 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 
 ## 已知限制
 
-- 仅支持 arena.ai Direct / Max 模式（不支持 Battle 盲测模式）
-- 不支持消息编辑 / 删除 / 新建（只读）
+- Battle 盲测模式仅显示提示（双模型并排导航暂不支持），Direct / Max 模式功能完整
+- 消息编辑 / 删除仅扩展内生效（arena.ai 没有消息级编辑 API，官方只支持会话归档后删除）；不支持新建消息
 - 自定义标题保存在 `chrome.storage.local`（每个扩展实例独立）
 - 隐藏轮次不持久化到 Direct Chat（无会话 id 可挂靠，与消息存储同生命周期）
 
-（早期记录的"右键 Rename 依赖 `prompt()`"已在 Phase 7 修复——双击与右键共用一个内联编辑器 `ui/inlineRename.ts`。）
+（重命名已统一为右键菜单唯一入口：Phase 7 去掉 `prompt()` 改内联编辑器 `ui/inlineRename.ts`，#17 移除了双击路径，对齐 ChatGPT / Claude。）
 
 ---
 

@@ -13,10 +13,12 @@ import {
 	loadHiddenRounds,
 	resetHiddenRounds,
 } from "../../src/rounds";
+import { conversationStore } from "../../src/conversationStore";
 import { panel } from "../../src/state";
 import { setClipboardBackend } from "../../src/platform/clipboard";
 import { setStorageBackend } from "../../src/platform/storage";
 import {
+	deleteRound,
 	getMessagesForRound,
 	scrollToRound,
 } from "../../src/features/roundNav";
@@ -25,10 +27,12 @@ import type { SidebarRound } from "../../src/types";
 vi.mock("../../src/features/roundNav", () => ({
 	scrollToRound: vi.fn(() => false),
 	getMessagesForRound: vi.fn(() => []),
+	deleteRound: vi.fn(() => true),
 }));
 
 const mockScroll = vi.mocked(scrollToRound);
 const mockMessages = vi.mocked(getMessagesForRound);
+const mockDelete = vi.mocked(deleteRound);
 
 function round(overrides: Partial<SidebarRound> = {}): SidebarRound {
 	return {
@@ -49,6 +53,14 @@ function hideButton(el: HTMLElement): HTMLButtonElement {
 	return el.querySelectorAll<HTMLButtonElement>(".item-action")[1]!;
 }
 
+function editButton(el: HTMLElement): HTMLButtonElement {
+	return el.querySelector<HTMLButtonElement>(".item-edit")!;
+}
+
+function deleteButton(el: HTMLElement): HTMLButtonElement {
+	return el.querySelector<HTMLButtonElement>(".item-delete")!;
+}
+
 describe("createRoundEl", () => {
 	beforeEach(() => {
 		document.body.innerHTML = "";
@@ -57,11 +69,16 @@ describe("createRoundEl", () => {
 		// resetHiddenRounds also drops the adopted session id, so persistence
 		// tests start from a clean slate.
 		resetHiddenRounds();
+		conversationStore.reset();
 		setStorageBackend(null);
 		panel.isOpen = true;
 		panel.currentRoundIdx = 0;
 		mockScroll.mockClear();
-		mockMessages.mockReset();
+		// Default to no messages, like the real function returns for an
+		// unknown round — roundMetaLabel and the edit button both call it.
+		mockMessages.mockReset().mockReturnValue([]);
+		mockDelete.mockReset();
+		mockDelete.mockReturnValue(true);
 		setClipboardBackend(null);
 		window.history.pushState({}, "", "/");
 	});
@@ -73,7 +90,7 @@ describe("createRoundEl", () => {
 		expect(el.dataset.roundId).toBe("r1");
 		expect(el.dataset.roundIdx).toBe("2");
 		expect(el.querySelector(".item-meta-label")).not.toBeNull();
-		expect(el.querySelectorAll(".item-action")).toHaveLength(2);
+		expect(el.querySelectorAll(".item-action")).toHaveLength(4);
 		expect(el.querySelector(".item-title")?.textContent).toBe("First question");
 		expect(el.querySelector(".item-assistant-preview")).not.toBeNull();
 	});
@@ -349,5 +366,132 @@ describe("hidden-round persistence", () => {
 		// rounds themselves, which direct chats never persist either.
 		expect(hiddenRoundIds.has("r1")).toBe(true);
 		expect(data.size).toBe(0);
+	});
+});
+
+describe("edit and delete buttons (#15)", () => {
+	function seedRoundWithUser() {
+		mockMessages.mockReturnValue([
+			{ id: "u1", role: "user", content: "original question" },
+			{ id: "a1", role: "assistant", content: "answer" },
+		]);
+		conversationStore.messages = [
+			{ id: "u1", role: "user", content: "original question" } as never,
+			{ id: "a1", role: "assistant", content: "answer" } as never,
+		];
+	}
+
+	it("edits the user message inline and refreshes", () => {
+		seedRoundWithUser();
+		const refreshUI = vi.fn();
+		const el = createRoundEl(round({ id: "r1" }), 0, refreshUI);
+
+		editButton(el).click();
+		const input = el.querySelector(
+			".item-title input",
+		) as HTMLInputElement | null;
+		expect(input).not.toBeNull();
+		expect(input!.value).toBe("original question");
+
+		input!.value = "corrected question";
+		input!.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+		);
+
+		expect(conversationStore.messages[0].content).toBe("corrected question");
+		expect(conversationStore.messages[0].edited).toBe(true);
+		expect(refreshUI).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves the store alone when the edit is cancelled", () => {
+		seedRoundWithUser();
+		const refreshUI = vi.fn();
+		const el = createRoundEl(
+			round({ id: "r1", title: "original…" }),
+			0,
+			refreshUI,
+		);
+
+		editButton(el).click();
+		const input = el.querySelector(
+			".item-title input",
+		) as HTMLInputElement | null;
+		input!.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+
+		expect(conversationStore.messages[0].content).toBe("original question");
+		// A re-render restores the truncated title — the cancel path must ask
+		// for one, since the editor leaves the full text in the row.
+		expect(refreshUI).toHaveBeenCalledTimes(1);
+	});
+
+	it("hides the edit button for rounds without a user turn", () => {
+		const el = createRoundEl(
+			round({ id: "r1", hasUserTurn: false }),
+			0,
+			vi.fn(),
+		);
+		expect(editButton(el).style.display).toBe("none");
+	});
+
+	it("marks the meta label when a message was edited", () => {
+		const el = createRoundEl(round({ id: "r1", edited: true }), 0, vi.fn());
+		expect(el.querySelector(".item-meta-label")?.textContent).toBe(
+			"Round 1 · ✏️ edited",
+		);
+	});
+
+	it("combines the edited marker with the response count", () => {
+		const el = createRoundEl(
+			round({ id: "r1", assistantCount: 2, edited: true }),
+			0,
+			vi.fn(),
+		);
+		expect(el.querySelector(".item-meta-label")?.textContent).toBe(
+			"Round 1 · 2 responses · ✏️ edited",
+		);
+	});
+
+	it("arms on first click and deletes on second", () => {
+		const refreshUI = vi.fn();
+		const el = createRoundEl(round({ id: "r7" }), 0, refreshUI);
+		const btn = deleteButton(el);
+
+		btn.click();
+		expect(mockDelete).not.toHaveBeenCalled();
+		expect(btn.textContent).toBe("❓");
+
+		btn.click();
+		expect(mockDelete).toHaveBeenCalledWith("r7");
+		expect(refreshUI).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not refresh when the delete reports nothing to remove", () => {
+		mockDelete.mockReturnValue(false);
+		const refreshUI = vi.fn();
+		const el = createRoundEl(round({ id: "r7" }), 0, refreshUI);
+
+		deleteButton(el).click();
+		deleteButton(el).click();
+
+		expect(mockDelete).toHaveBeenCalledWith("r7");
+		expect(refreshUI).not.toHaveBeenCalled();
+	});
+
+	it("disarms after 3s without a second click", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createRoundEl(round({ id: "r7" }), 0, vi.fn());
+			const btn = deleteButton(el);
+			btn.click();
+			expect(btn.textContent).toBe("❓");
+			vi.advanceTimersByTime(3000);
+			expect(btn.textContent).toBe("🗑️");
+			btn.click(); // arms again instead of deleting
+			expect(mockDelete).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

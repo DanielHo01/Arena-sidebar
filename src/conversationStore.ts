@@ -14,10 +14,11 @@ import type {
 	SidebarMessage,
 	SidebarRound,
 } from "./types";
-import { cachedElements } from "./state";
+import { cachedElements, panel } from "./state";
 import { storageGet, storageSet } from "./platform/storage";
 import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
 import { computeRounds } from "./core/rounds";
+import { deletedMessageKeys, tombstoneKey } from "./rounds";
 
 // ─── Change subscription ──────────────────────────────────────────────────────────────
 //
@@ -130,6 +131,11 @@ export const conversationStore = {
 			const old = m as SidebarMessage & { source?: MessageOrigin };
 			return { ...m, origin: old.source ?? "dom" } as SidebarMessage;
 		});
+		// #15: a tombstone may have landed after this payload was written — drop
+		// the ghosts and recompute the rounds that referenced them. The caller
+		// loads tombstones first (content.ts rebuildForCurrentRoute), so the live
+		// set is complete by the time this runs.
+		dropTombstonedMessages();
 		this.rounds = (raw.rounds ?? []) as SidebarRound[];
 		this.lastOrigin = "bootstrap";
 		bindDomAnchors();
@@ -149,12 +155,19 @@ function upsertMessage(msg: SidebarMessage): boolean {
 	msg.fingerprint = base;
 	msg.occurrence = occ;
 
+	// #15: tombstoned messages never come back, however often the DOM
+	// re-extracts them.
+	if (deletedMessageKeys.has(tombstoneKey(base, occ))) return false;
+
 	const existing = conversationStore.messages.find(
 		(m) => baseKey(m) === base && (m.occurrence ?? 0) === occ,
 	);
 	if (existing) {
 		// Merge: preserve existing domId even if new source doesn't have it.
 		if (!existing.domId && msg.domId) existing.domId = msg.domId;
+		// #15: a user edit wins over every re-extract — the overlay is keyed
+		// by the ORIGINAL fingerprint, which is exactly what the DOM returns.
+		if (existing.edited) return false;
 		// Prefer capture origin over dom origin.
 		if (msg.origin === "capture" && existing.origin !== "capture") {
 			existing.content = msg.content;
@@ -272,4 +285,52 @@ export function refreshStore(opts: {
 	if (capture.length > 0) conversationStore.lastOrigin = "capture";
 	else if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
 	else if (dom.length > 0) conversationStore.lastOrigin = "dom";
+}
+
+// ─── Local message edit (#15) ──────────────────────────────────────────────────
+
+/**
+ * Replace one message's content with the user's correction. The fingerprint
+ * deliberately still keys the DOM original, so re-extracts merge into this
+ * message (and lose to the overlay via upsertMessage) instead of duplicating
+ * it, and DOM anchors keep binding. Returns false when the id is unknown or
+ * the text is empty/unchanged.
+ *
+ * Extension-visible only — arena.ai itself is never touched (it exposes no
+ * message edit API; help.arena.ai documents session delete only).
+ */
+export function editMessageContent(
+	messageId: string,
+	newContent: string,
+): boolean {
+	const msg = conversationStore.messages.find((m) => m.id === messageId);
+	const trimmed = newContent.trim();
+	if (!msg || !trimmed || trimmed === msg.content) return false;
+	if (!msg.edited) msg.editedFrom = msg.content;
+	msg.content = trimmed;
+	msg.edited = true;
+	msg.editedAt = Date.now();
+	rebuildRounds();
+	void conversationStore.saveToStorage();
+	// renderKey compares round ids, which an edit does not move — without this
+	// the fast path would swallow the re-render and the row would show stale
+	// text until something else changed.
+	panel.lastRenderKey = "";
+	return true;
+}
+
+/**
+ * Drop live messages whose tombstones arrived after they did — the cross-tab
+ * delete path (another tab's 🗑️) and the stale-payload path share it.
+ * Returns true when anything was dropped (callers re-render on true).
+ */
+export function dropTombstonedMessages(): boolean {
+	const before = conversationStore.messages.length;
+	conversationStore.messages = conversationStore.messages.filter(
+		(m) => !deletedMessageKeys.has(tombstoneKey(baseKey(m), m.occurrence ?? 0)),
+	);
+	if (conversationStore.messages.length === before) return false;
+	rebuildRounds();
+	void conversationStore.saveToStorage();
+	return true;
 }

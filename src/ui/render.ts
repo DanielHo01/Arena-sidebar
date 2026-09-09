@@ -15,6 +15,7 @@ import { panel } from "../state";
 import { hiddenRoundIds } from "../rounds";
 import { renderKey } from "../core/renderKey";
 import { isSessionRoute } from "../platform/route";
+import { detectBattleMode } from "../platform/arenaDom";
 import { buildFab } from "./fab";
 import {
 	ensurePanelSkeleton,
@@ -89,6 +90,15 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 		panel.showHiddenRounds = false;
 	}
 
+	// Battle mode (#14): the extractor understands single-thread chats, not the
+	// dual-column battle layout, so a battle page leaves the store empty. Fold
+	// that into the key so the notice appears (and disappears) without waiting
+	// for a round change; gated on empty + no-search because detection only
+	// affects the empty-state message, and the gate skips the DOM scan on
+	// every render that already has rounds.
+	const battleEmpty =
+		storeRounds.length === 0 && !panel.searchQuery && detectBattleMode();
+
 	const key = renderKey({
 		isOpen: panel.isOpen,
 		searchQuery: panel.searchQuery,
@@ -96,6 +106,7 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 		roundIds: storeRounds.map((r) => r.id),
 		hiddenRoundIds: Array.from(hiddenRoundIds),
 		showHiddenRounds: panel.showHiddenRounds,
+		battleMode: battleEmpty,
 	});
 
 	// Fast-path: nothing the rendered output depends on has changed, and the
@@ -115,7 +126,18 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 
 	panel.lastRenderKey = key;
 	ensureStyles(shadowRoot);
-	if (msgCount === 0) return;
+	// Zero messages still means zero UI — except in battle mode, where an
+	// empty store is the expected outcome and silence would leave the user
+	// with no hint why. Fall through so the FAB/panel shell renders and the
+	// battle notice (list.ts) has somewhere to live.
+	if (msgCount === 0 && !battleEmpty) {
+		// The store only empties on a route change, so any shell still here
+		// belongs to the previous route — including a battle notice from a
+		// battle the user just left. Clear it instead of leaving it stale.
+		shadowRoot.querySelector(".panel")?.remove();
+		shadowRoot.querySelector(".fab")?.remove();
+		return;
+	}
 
 	if (panel.isOpen)
 		renderPanelMode(shadowRoot, storeRounds, msgCount, onRefresh);

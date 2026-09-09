@@ -19,6 +19,7 @@ const base = {
 	roundIds: ["r1", "r2", "r3"],
 	hiddenRoundIds: [] as string[],
 	showHiddenRounds: false,
+	battleMode: false,
 };
 
 describe("renderKey", () => {
@@ -98,5 +99,11 @@ describe("renderKey", () => {
 		const a = renderKey({ ...base, searchQuery: "ab" });
 		const b = renderKey({ ...base, searchQuery: "ba" });
 		expect(a).not.toBe(b);
+	});
+
+	it("differs when battle mode appears on an empty store (#14)", () => {
+		// Detection renames the empty state, so a vote bar appearing on an
+		// otherwise unchanged page must invalidate the fast path.
+		expect(renderKey({ ...base, battleMode: true })).not.toBe(renderKey(base));
 	});
 });

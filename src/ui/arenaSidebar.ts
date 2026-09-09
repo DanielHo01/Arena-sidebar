@@ -10,6 +10,7 @@ import { resolveQuickNavContainer } from "../platform/arenaDom";
 import { h } from "./dom";
 import { ASL } from "./styles/arenaSidebar";
 import { onStorageChanged } from "../platform/storage";
+import { setupHistoryTitles } from "../historyTitles";
 import { resolveSessionTitle } from "../titleResolver";
 import {
 	createFolder,
@@ -144,6 +145,12 @@ export function setupFoldersStorageSync(): Disposer {
 		if (newValue.sessions) {
 			foldersState.sessions = new Map(newValue.sessions);
 		}
+		// #11: repaint history-link titles at once. Memory alone is not
+		// enough — on an idle tab the next DOM mutation (the usual restore
+		// trigger) may be minutes away, so a remote rename would sit
+		// invisible. The restore is idempotent: links whose text already
+		// matches are read, not rewritten.
+		setupHistoryTitles();
 		// Re-render if section is open
 		if (librarySectionOpen) {
 			const container = resolveQuickNavContainer();

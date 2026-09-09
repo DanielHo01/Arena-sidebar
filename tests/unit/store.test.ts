@@ -12,15 +12,24 @@ import {
 	refreshStore,
 	addCapturedMessage,
 	bindDomAnchors,
+	dropTombstonedMessages,
+	editMessageContent,
 } from "../../src/conversationStore";
-import { getMessagesForRound } from "../../src/features/roundNav";
-import { cachedElements } from "../../src/state";
+import { deleteRound, getMessagesForRound } from "../../src/features/roundNav";
+import {
+	deletedMessageKeys,
+	resetDeletedMessages,
+	tombstoneKey,
+} from "../../src/rounds";
+import { cachedElements, panel } from "../../src/state";
+import { setStorageBackend } from "../../src/platform/storage";
 
 // The store is a module-level singleton, so every test starts from empty.
 // (The original script called reset() inline at the top of each test.)
 beforeEach(() => {
 	conversationStore.reset();
 	cachedElements.clear();
+	resetDeletedMessages();
 });
 
 describe("refreshStore", () => {
@@ -123,5 +132,195 @@ describe("bindDomAnchors", () => {
 		} as unknown as Element);
 		bindDomAnchors();
 		expect(conversationStore.messages[0].domId).toBeUndefined();
+	});
+});
+
+describe("editMessageContent (#15)", () => {
+	it("replaces content but keeps the original fingerprint", () => {
+		refreshStore({
+			dom: [
+				{ id: "u1", role: "user", content: "orig question" },
+				{ id: "a1", role: "assistant", content: "answer" },
+			],
+		});
+		const before = conversationStore.messages[0].fingerprint;
+
+		expect(editMessageContent("u1", "fixed question")).toBe(true);
+
+		const msg = conversationStore.messages[0];
+		expect(msg.content).toBe("fixed question");
+		expect(msg.fingerprint).toBe(before);
+		expect(msg.edited).toBe(true);
+		expect(msg.editedFrom).toBe("orig question");
+		expect(msg.editedAt).toEqual(expect.any(Number));
+		// The round title follows the edited text.
+		expect(conversationStore.rounds[0].title).toBe("fixed question");
+	});
+
+	it("rejects unknown ids, empty text, and no-op edits", () => {
+		refreshStore({ dom: [{ id: "u1", role: "user", content: "hi" }] });
+		expect(editMessageContent("nope", "x")).toBe(false);
+		expect(editMessageContent("u1", "   ")).toBe(false);
+		expect(editMessageContent("u1", "hi")).toBe(false);
+		expect(conversationStore.messages[0].edited).toBeUndefined();
+	});
+
+	it("keeps the first original across repeated edits", () => {
+		refreshStore({ dom: [{ id: "u1", role: "user", content: "v1" }] });
+		editMessageContent("u1", "v2");
+		editMessageContent("u1", "v3");
+		expect(conversationStore.messages[0].content).toBe("v3");
+		expect(conversationStore.messages[0].editedFrom).toBe("v1");
+	});
+
+	it("wins over a later DOM re-extract of the original", () => {
+		refreshStore({ dom: [{ id: "u1", role: "user", content: "orig" }] });
+		editMessageContent("u1", "fixed");
+		// The page still holds the original; the next scan returns it with a
+		// fresh random id, exactly like production re-extracts do.
+		refreshStore({
+			dom: [{ id: "msg-0-x7q2", role: "user", content: "orig" }],
+		});
+		expect(conversationStore.messages).toHaveLength(1);
+		expect(conversationStore.messages[0].content).toBe("fixed");
+	});
+
+	it("invalidates the render fast path (ids don't move on edit)", () => {
+		refreshStore({ dom: [{ id: "u1", role: "user", content: "hi" }] });
+		panel.lastRenderKey = "junk";
+		editMessageContent("u1", "hello");
+		expect(panel.lastRenderKey).toBe("");
+	});
+});
+
+describe("deleteRound (#15)", () => {
+	function seedTwoRounds() {
+		refreshStore({
+			dom: [
+				{ id: "u1", role: "user", content: "first" },
+				{ id: "a1", role: "assistant", content: "answer one" },
+				{ id: "u2", role: "user", content: "second" },
+				{ id: "a2", role: "assistant", content: "answer two" },
+			],
+		});
+	}
+
+	it("drops the round's messages and tombstones their fingerprints", () => {
+		seedTwoRounds();
+		expect(deleteRound("u1")).toBe(true);
+		expect(conversationStore.messages.map((m) => m.id)).toEqual(["u2", "a2"]);
+		expect(conversationStore.rounds.map((r) => r.id)).toEqual(["u2"]);
+		expect(deletedMessageKeys.size).toBe(2);
+	});
+
+	it("returns false for unknown or already-deleted rounds", () => {
+		seedTwoRounds();
+		expect(deleteRound("nope")).toBe(false);
+		expect(deleteRound("u1")).toBe(true);
+		expect(deleteRound("u1")).toBe(false);
+	});
+
+	it("stays deleted across a DOM re-extract of the same content", () => {
+		seedTwoRounds();
+		deleteRound("u1");
+		// Production re-extracts mint fresh ids; only fingerprints match.
+		refreshStore({
+			dom: [
+				{ id: "msg-0-aaa", role: "user", content: "first" },
+				{ id: "msg-1-bbb", role: "assistant", content: "answer one" },
+				{ id: "msg-2-ccc", role: "user", content: "second" },
+				{ id: "msg-3-ddd", role: "assistant", content: "answer two" },
+			],
+		});
+		expect(conversationStore.messages.map((m) => m.id)).toEqual(["u2", "a2"]);
+		expect(conversationStore.rounds).toHaveLength(1);
+	});
+
+	it("tombstones one occurrence without touching its repeats", () => {
+		refreshStore({
+			dom: [
+				{ id: "u1", role: "user", content: "again" },
+				{ id: "u2", role: "user", content: "again" },
+			],
+		});
+		// Two user turns, no assistants: two single-message rounds.
+		expect(conversationStore.rounds).toHaveLength(2);
+		deleteRound("u1");
+		refreshStore({
+			dom: [
+				{ id: "x1", role: "user", content: "again" },
+				{ id: "x2", role: "user", content: "again" },
+			],
+		});
+		expect(conversationStore.messages).toHaveLength(1);
+		expect(conversationStore.messages[0].id).toBe("u2");
+	});
+});
+
+describe("dropTombstonedMessages (#15)", () => {
+	it("drops live messages whose tombstones arrived from another tab", () => {
+		refreshStore({
+			dom: [
+				{ id: "u1", role: "user", content: "first" },
+				{ id: "a1", role: "assistant", content: "answer one" },
+			],
+		});
+		const fp = conversationStore.messages[0].fingerprint!;
+		deletedMessageKeys.add(tombstoneKey(fp, 0));
+
+		expect(dropTombstonedMessages()).toBe(true);
+		expect(conversationStore.messages.map((m) => m.id)).toEqual(["a1"]);
+		// The round referenced the dropped user turn — recomputed, not stale.
+		expect(conversationStore.rounds).toHaveLength(1);
+		expect(conversationStore.rounds[0].id).toBe("a1");
+	});
+
+	it("returns false when nothing is tombstoned", () => {
+		refreshStore({ dom: [{ id: "u1", role: "user", content: "hi" }] });
+		expect(dropTombstonedMessages()).toBe(false);
+	});
+
+	it("loadFromStorage drops messages whose tombstones landed after the write", async () => {
+		const data = new Map<string, unknown>();
+		setStorageBackend({
+			get: async (keys: string | string[] | null) => {
+				const list =
+					keys === null
+						? [...data.keys()]
+						: Array.isArray(keys)
+							? keys
+							: [keys];
+				return Object.fromEntries(
+					list.filter((k) => data.has(k)).map((k) => [k, data.get(k)]),
+				);
+			},
+			set: async (items: Record<string, unknown>) => {
+				for (const [k, v] of Object.entries(items)) data.set(k, v);
+			},
+			remove: async () => {},
+		});
+		try {
+			conversationStore.sessionId = "s1";
+			refreshStore({
+				dom: [
+					{ id: "u1", role: "user", content: "first" },
+					{ id: "a1", role: "assistant", content: "answer one" },
+				],
+			});
+			await conversationStore.saveToStorage();
+			// A delete whose session-save never landed (crash, or another
+			// tab's 2s loop overwriting it): tombstone present, payload stale.
+			const fp = conversationStore.messages[0].fingerprint!;
+			deletedMessageKeys.add(tombstoneKey(fp, 0));
+			conversationStore.reset();
+
+			const restored = await conversationStore.loadFromStorage("s1");
+
+			expect(restored).toEqual({ msgs: 1, rounds: 1 });
+			expect(conversationStore.messages.map((m) => m.id)).toEqual(["a1"]);
+		} finally {
+			setStorageBackend(null);
+			conversationStore.sessionId = "";
+		}
 	});
 });

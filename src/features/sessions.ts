@@ -110,9 +110,9 @@ export function getSessionMeta(sessionId: string): SessionMeta | undefined {
 }
 
 /**
- * Set the user's custom title for a session — the single write path for all user
- * rename operations (double-click and context-menu rename). Preserves all other
- * metadata fields including the existing customTitle value.
+ * Set the user's custom title for a session — the single write path for user
+ * rename (the right-click context menu; #17 removed double-click rename).
+ * Preserves every other metadata field.
  */
 export function setSessionCustomTitle(
 	sessionId: string,

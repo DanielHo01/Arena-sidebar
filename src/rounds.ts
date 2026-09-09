@@ -1,7 +1,8 @@
-// User-managed round state — hidden flags, persisted per session.
+// User-managed round state — hidden flags and deleted-message tombstones,
+// persisted per session.
 //
-// History: this was a plain in-memory Set with no persistence and no unhide
-// control (docs/handoff-2026-09-07.md §5.1). That made ✕ an irreversible
+// History: hidden flags were a plain in-memory Set with no persistence and no
+// unhide control (docs/handoff-2026-09-07.md §5.1). That made ✕ an irreversible
 // action that a page refresh silently undid — and worse, round ids are not
 // unique per session (bootstrap messages get deterministic ids like "boot-3"
 // and round.id is simply msg.id), so a flag set in one session leaked into
@@ -11,6 +12,11 @@
 // so two conversations cannot collide, and the panel renders a restore
 // affordance for them (ui/panel/list.ts + ui/panel/roundItem.ts). Round
 // grouping still lives in core/rounds.ts (single source of truth).
+//
+// #15 adds the second half: hard delete (🗑️). Where ✕ hides a round but keeps
+// it restorable, 🗑️ drops its messages from the store and tombstones their
+// fingerprints so the next DOM re-extract cannot resurrect them. Tombstones
+// follow the same per-session key + cross-tab sync design as hidden flags.
 
 import { onStorageChanged, storageGet, storageSet } from "./platform/storage";
 import type { Disposer } from "./types";
@@ -105,14 +111,78 @@ export function setupHiddenRoundsSync(
 ): Disposer {
 	return onStorageChanged(hiddenRoundsKey(sessionId), (change) => {
 		const next = (change as { newValue?: unknown } | undefined)?.newValue;
-		if (sameAsLive(next)) return;
+		if (sameStringSet(hiddenRoundIds, next)) return;
 		applyHiddenRounds(next);
 		onChange();
 	});
 }
 
-/** True when `ids` is exactly what hiddenRoundIds already contains. */
-function sameAsLive(ids: unknown): boolean {
-	if (!Array.isArray(ids) || ids.length !== hiddenRoundIds.size) return false;
-	return ids.every((id) => typeof id === "string" && hiddenRoundIds.has(id));
+/** True when `ids` is exactly what `live` already contains. */
+function sameStringSet(live: Set<string>, ids: unknown): boolean {
+	if (!Array.isArray(ids) || ids.length !== live.size) return false;
+	return ids.every((id) => typeof id === "string" && live.has(id));
+}
+
+// ─── Deleted-message tombstones (#15) ─────────────────────────────────────────
+//
+// A hard-deleted round must stay deleted: without tombstones the next DOM
+// re-extract would find the same messages again and resurrect them. Keys are
+// fingerprint + occurrence — message ids are useless here because DOM
+// re-extracts mint fresh random ids, while fingerprints renumber identically.
+// Same per-session key, stale-load guard, and cross-tab sync as hidden flags.
+
+export const deletedMessageKeys = new Set<string>();
+
+/** Tombstone key for one message: content fingerprint + occurrence index. */
+export function tombstoneKey(fingerprint: string, occurrence: number): string {
+	return `${fingerprint}#${occurrence}`;
+}
+
+export function deletedMessagesKey(sessionId: string): string {
+	return `edge-ai-sidebar:deleted-messages:${sessionId}`;
+}
+
+/** The session whose tombstones are live in deletedMessageKeys. */
+let deletedSid = "";
+
+export function resetDeletedMessages(): void {
+	deletedMessageKeys.clear();
+	deletedSid = "";
+}
+
+export async function loadDeletedMessages(sessionId: string): Promise<void> {
+	deletedSid = sessionId;
+	deletedMessageKeys.clear();
+	if (!sessionId) return;
+	const data = await storageGet(deletedMessagesKey(sessionId));
+	if (deletedSid !== sessionId) return;
+	applyDeletedMessages(data);
+}
+
+export function persistDeletedMessages(): void {
+	if (!deletedSid) return;
+	void storageSet(
+		deletedMessagesKey(deletedSid),
+		Array.from(deletedMessageKeys),
+	);
+}
+
+export function applyDeletedMessages(ids: unknown): void {
+	deletedMessageKeys.clear();
+	if (!Array.isArray(ids)) return;
+	for (const id of ids) {
+		if (typeof id === "string") deletedMessageKeys.add(id);
+	}
+}
+
+export function setupDeletedMessagesSync(
+	sessionId: string,
+	onChange: () => void,
+): Disposer {
+	return onStorageChanged(deletedMessagesKey(sessionId), (change) => {
+		const next = (change as { newValue?: unknown } | undefined)?.newValue;
+		if (sameStringSet(deletedMessageKeys, next)) return;
+		applyDeletedMessages(next);
+		onChange();
+	});
 }

@@ -195,6 +195,7 @@ describe("renderUI", () => {
 				["r1"],
 				[],
 				false,
+				false,
 			]);
 
 			renderUI(shadow, onRefresh);
@@ -260,6 +261,67 @@ describe("renderUI", () => {
 		expect(hooks.ensureStyles).toHaveBeenCalledWith(shadow);
 		expect(hooks.buildFab).not.toHaveBeenCalled();
 		expect(hooks.ensurePanelSkeleton).not.toHaveBeenCalled();
+	});
+
+	describe("battle mode with an empty store (#14)", () => {
+		// A quorum of the battle vote labels — see platform/arenaDom.ts.
+		const VOTE_BAR = `
+			<button>👍 A is better</button>
+			<button>👎 B is better</button>
+			<button>🤝 Tie</button>`;
+
+		it("renders a FAB so the battle notice has a way in", () => {
+			document.body.insertAdjacentHTML("beforeend", VOTE_BAR);
+			panel.isOpen = false;
+
+			renderUI(shadow, onRefresh);
+
+			expect(hooks.buildFab).toHaveBeenCalledWith(0);
+			expect(shadow.querySelector(".fab")).not.toBeNull();
+		});
+
+		it("renders the panel shell so list.ts can show the notice", () => {
+			document.body.insertAdjacentHTML("beforeend", VOTE_BAR);
+			panel.isOpen = true;
+
+			renderUI(shadow, onRefresh);
+
+			expect(hooks.ensurePanelSkeleton).toHaveBeenCalledWith(
+				shadow,
+				0,
+				0,
+				onRefresh,
+			);
+			expect(hooks.reconcileList).toHaveBeenCalled();
+		});
+
+		it("re-renders when the vote bar appears on an unchanged page", () => {
+			panel.isOpen = true;
+			renderUI(shadow, onRefresh);
+			clearCalls();
+			expect(hooks.reconcileList).not.toHaveBeenCalled();
+
+			document.body.insertAdjacentHTML("beforeend", VOTE_BAR);
+			renderUI(shadow, onRefresh);
+
+			expect(hooks.reconcileList).toHaveBeenCalledTimes(1);
+		});
+
+		it("clears a stale battle notice once the page leaves battle mode", () => {
+			document.body.insertAdjacentHTML("beforeend", VOTE_BAR);
+			panel.isOpen = true;
+			renderUI(shadow, onRefresh);
+			expect(shadow.querySelector(".panel")).not.toBeNull();
+			clearCalls();
+
+			// The vote bar unmounts (mode switch); the store is still empty.
+			document.body.querySelectorAll("button").forEach((b) => b.remove());
+			renderUI(shadow, onRefresh);
+
+			expect(shadow.querySelector(".panel")).toBeNull();
+			expect(hooks.reconcileList).not.toHaveBeenCalled();
+			expect(hooks.buildFab).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("FAB mode (panel closed)", () => {

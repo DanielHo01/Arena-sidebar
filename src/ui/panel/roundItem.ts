@@ -4,12 +4,35 @@
 
 import type { SidebarRound } from "../../types";
 import { hiddenRoundIds, persistHiddenRounds } from "../../rounds";
-import { getMessagesForRound, scrollToRound } from "../../features/roundNav";
+import {
+	deleteRound,
+	getMessagesForRound,
+	scrollToRound,
+} from "../../features/roundNav";
+import { editMessageContent } from "../../conversationStore";
 import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
 import { copyText } from "../../platform/clipboard";
+import { beginInlineRename } from "../inlineRename";
 
 // ─── Round element ──────────────────────────────────────────────────────────────────
+
+/**
+ * The row's meta label: number, response count, edited marker. One helper for
+ * both create and update so the two cannot drift (they were duplicated text
+ * before #15 added the third segment). Reads the precomputed round fields —
+ * scanning messages per row would turn every render into O(rows × messages).
+ */
+function roundMetaLabel(round: SidebarRound, idx: number): string {
+	const parts = [`Round ${idx + 1}`];
+	if (round.assistantCount && round.assistantCount > 1) {
+		parts.push(`${round.assistantCount} responses`);
+	}
+	if (round.edited) {
+		parts.push("✏️ edited");
+	}
+	return parts.join(" · ");
+}
 
 // Sprint 4: DeepSeek-style round item — .item-meta (label + actions) + .item-title
 export function createRoundEl(
@@ -30,12 +53,7 @@ export function createRoundEl(
 
 	const metaLabel = document.createElement("span");
 	metaLabel.className = "item-meta-label";
-	// Sprint 8: show assistantCount when > 1
-	const metaLabelText =
-		round.assistantCount && round.assistantCount > 1
-			? `Round ${idx + 1} · ${round.assistantCount} responses`
-			: `Round ${idx + 1}`;
-	metaLabel.textContent = metaLabelText;
+	metaLabel.textContent = roundMetaLabel(round, idx);
 
 	const actions = document.createElement("span");
 	actions.className = "item-actions";
@@ -77,8 +95,69 @@ export function createRoundEl(
 		refreshUI();
 	};
 
+	// #15: edit the round's user message in place. Single-line editor shared
+	// with session rename: Enter commits, Escape cancels. Long prompts scroll
+	// horizontally inside it — a textarea editor is future work if this proves
+	// too cramped. Hidden for rounds without a user turn (lead-assistant).
+	const editBtn = document.createElement("button");
+	editBtn.className = "item-action item-edit";
+	editBtn.textContent = "✏️";
+	editBtn.title = "Edit your message (navigator only — arena.ai is untouched)";
+	// Missing on legacy payloads reads as "has one" — the click then no-ops.
+	if (round.hasUserTurn === false) {
+		editBtn.style.display = "none";
+	}
+	editBtn.onclick = (e) => {
+		e.stopPropagation();
+		const userMsg = getMessagesForRound(round.id).find(
+			(m) => m.role === "user",
+		);
+		const titleEl = item.querySelector(".item-title");
+		if (!userMsg || !titleEl) return;
+		beginInlineRename({
+			target: titleEl,
+			initial: userMsg.content,
+			onCommit: (text) => {
+				if (editMessageContent(userMsg.id, text)) refreshUI();
+			},
+			// The title shows truncated text; without a re-render a cancel
+			// would leave the full untruncated content in the row.
+			onCancel: () => refreshUI(),
+		});
+	};
+
+	// #15: hard delete. Unlike ✕ hide there is no restore — the tombstone
+	// keeps re-extracts from resurrecting the round — so the first click only
+	// arms, and the arm expires after 3s.
+	const DELETE_TITLE =
+		"Delete this round from the navigator (permanent — arena.ai is untouched)";
+	const deleteBtn = document.createElement("button");
+	deleteBtn.className = "item-action item-delete";
+	deleteBtn.textContent = "🗑️";
+	deleteBtn.title = DELETE_TITLE;
+	let armed = false;
+	let disarmTimer = 0;
+	deleteBtn.onclick = (e) => {
+		e.stopPropagation();
+		if (!armed) {
+			armed = true;
+			deleteBtn.textContent = "❓";
+			deleteBtn.title = "Click again to delete permanently";
+			disarmTimer = window.setTimeout(() => {
+				armed = false;
+				deleteBtn.textContent = "🗑️";
+				deleteBtn.title = DELETE_TITLE;
+			}, 3000);
+			return;
+		}
+		window.clearTimeout(disarmTimer);
+		if (deleteRound(round.id)) refreshUI();
+	};
+
 	actions.appendChild(copyBtn);
 	actions.appendChild(visibilityBtn);
+	actions.appendChild(editBtn);
+	actions.appendChild(deleteBtn);
 	meta.appendChild(metaLabel);
 	meta.appendChild(actions);
 
@@ -146,11 +225,7 @@ export function updateRoundEl(
 ) {
 	const metaLabel = el.querySelector(".item-meta-label");
 	if (metaLabel) {
-		const metaLabelText =
-			round.assistantCount && round.assistantCount > 1
-				? `Round ${idx + 1} · ${round.assistantCount} responses`
-				: `Round ${idx + 1}`;
-		metaLabel.textContent = metaLabelText;
+		metaLabel.textContent = roundMetaLabel(round, idx);
 	}
 	const title = el.querySelector(".item-title") as HTMLElement | null;
 	if (title) {

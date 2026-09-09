@@ -48,6 +48,17 @@ export interface SidebarMessage {
 	capturedAt?: number | undefined;
 	/** Session id from capture source */
 	sessionId?: string;
+	/**
+	 * Local edit (#15): user-corrected content lives in `content`; the
+	 * fingerprint still keys the DOM original so re-extracts merge into this
+	 * message (and lose to the overlay) instead of duplicating it.
+	 * Extension-visible only — arena.ai itself is never touched.
+	 */
+	edited?: boolean;
+	/** The pre-edit content, kept so the overlay is inspectable. */
+	editedFrom?: string;
+	/** When the user made the edit (Date.now()). */
+	editedAt?: number;
 }
 
 // ─── Unified round type ─────────────────────────────────────────────────────────────
@@ -72,6 +83,17 @@ export interface SidebarRound {
 	userPreview?: string | undefined;
 	assistantPreview?: string | undefined;
 	assistantCount?: number | undefined;
+	/**
+	 * ── #15: local message curation ──
+	 *
+	 * `edited` marks a round with a user-corrected message (the row shows a
+	 * badge); `hasUserTurn` is false only for lead-assistant rounds (the row
+	 * hides its ✏️ button). Both are computed in core/rounds.ts so the row
+	 * renderer never scans messages itself — per-row scans would turn every
+	 * render into O(rows × messages).
+	 */
+	edited?: boolean | undefined;
+	hasUserTurn?: boolean | undefined;
 }
 
 // ─── Capture types (unchanged — written by inject-hook.js in main world) ───────────

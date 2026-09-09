@@ -14,7 +14,7 @@
 //   ui/panel.ts         — panel skeleton, round items, reconciliation
 //   ui/fab.ts          — FAB + drag
 //   ui/modals.ts       — export / summary modals
-//   historyTitles.ts    — /c/ link double-click rename
+//   historyTitles.ts    — restore /c/ link custom titles + rename hint
 console.log("[AI Sidebar] content script loaded, modules initializing...");
 // Wrap everything in an IIFE so top-level errors are caught and reported to the console.
 // Wires:
@@ -27,7 +27,11 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 //   folders.ts          — session folder management
 
 import { extractMessages } from "./extract";
-import { conversationStore, refreshStore } from "./conversationStore";
+import {
+	conversationStore,
+	dropTombstonedMessages,
+	refreshStore,
+} from "./conversationStore";
 import { extractBootstrapMessages } from "./features/bootstrapExtract";
 import { panel, fab } from "./state";
 import { setupRscCapture } from "./capture";
@@ -42,10 +46,15 @@ import {
 	toggleArenaSessionLibrarySection,
 } from "./ui/arenaSidebar";
 import { setupHistoryContextMenu } from "./ui/contextMenu";
-import { setupHistoryTitleEditing } from "./historyTitles";
+import { setupHistoryTitles } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
 import { storageGet } from "./platform/storage";
-import { loadHiddenRounds, setupHiddenRoundsSync } from "./rounds";
+import {
+	loadDeletedMessages,
+	loadHiddenRounds,
+	setupDeletedMessagesSync,
+	setupHiddenRoundsSync,
+} from "./rounds";
 import { disposeAll, registerDisposer } from "./app/store";
 import {
 	initRouteState,
@@ -70,6 +79,9 @@ async function rebuildForCurrentRoute(): Promise<void> {
 	const sessionId = getSessionId(location.pathname);
 	if (sessionId) {
 		conversationStore.sessionId = sessionId;
+		// Tombstones first: loadFromStorage filters restored messages against
+		// the live set, so it must be complete before that read applies.
+		await loadDeletedMessages(sessionId);
 		// The message record and the hidden-round flags are independent keys —
 		// restore them together before the first post-route render.
 		await Promise.all([
@@ -196,9 +208,16 @@ try {
 		const initialSid = getSessionId(location.pathname);
 		if (initialSid) {
 			registerDisposer(setupHiddenRoundsSync(initialSid, refreshUI));
+			// #15: drop-then-render — see the same comment in app/loop.ts.
+			registerDisposer(
+				setupDeletedMessagesSync(initialSid, () => {
+					dropTombstonedMessages();
+					refreshUI();
+				}),
+			);
 		}
 		registerDisposer(setupHistoryContextMenu()); // Phase 10A: right-click menu on history links
-		registerDisposer(setupHistoryTitleEditing()); // restore/rename custom history titles
+		registerDisposer(setupHistoryTitles()); // restore custom history titles + rename hint
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),

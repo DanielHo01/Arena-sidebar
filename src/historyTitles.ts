@@ -1,14 +1,20 @@
-// History title editing — double-click on /c/ sidebar links to rename them.
-// The custom title is persisted via platform/storage.ts.
+// History titles — restore custom titles onto Arena's /c/ sidebar links and
+// advertise the rename entry point. The custom title is persisted via
+// platform/storage.ts.
+//
+// Rename used to have two entries: double-click edited a link in place, and the
+// right-click menu offered "✏️ Rename". Issue #17 reviewed that redundancy
+// against ChatGPT/Claude — both rename exclusively through a menu — and kept a
+// single path: the right-click menu (ui/contextMenu.ts). Double-click rename was
+// removed; this module binds no mouse handlers at all.
 //
 // Public exports:
-//   setupHistoryTitleEditing — scans and binds double-click rename to all /c/ links
+//   setupHistoryTitles — restore custom titles + hint tooltip on all /c/ links
 
-import { getSessionMeta, setSessionCustomTitle } from "./features/sessions";
+import { getSessionMeta } from "./features/sessions";
 import { resolveSessionTitle } from "./titleResolver";
 import { sessionIdFromHref } from "./platform/route";
 import { queryHistoryLinks } from "./platform/arenaDom";
-import { beginInlineRename } from "./ui/inlineRename";
 import type { Disposer } from "./types";
 
 // ─── Storage key ─────────────────────────────────────────────────────────────────────
@@ -25,7 +31,7 @@ import type { Disposer } from "./types";
 // What it cost was a whole class of staleness bug. The cache was only written by
 // the double-click save path; the context-menu rename wrote foldersState and the
 // link's DOM but not the cache, and restoreTitle() trusted the cache first. Since
-// app/loop.ts re-runs setupHistoryTitleEditing() on every debounced mutation, the
+// app/loop.ts re-runs setupHistoryTitles() on every debounced mutation, the
 // stale entry reverted a context-menu rename a few hundred ms after the user made
 // it. Reading foldersState directly makes that unrepresentable: there is exactly
 // one title store, so there is nothing to fall out of sync.
@@ -97,42 +103,32 @@ function restoreAllTitles(): void {
 
 // ─── Main setup ─────────────────────────────────────────────────────────────────────
 
-export function setupHistoryTitleEditing(): Disposer {
+/** Tooltip suffix advertising the single rename entry (the right-click menu). */
+const HINT_SUFFIX = " | Right-click to rename";
+/**
+ * Tooltip suffix left by the retired double-click path — stripped on sight so an
+ * upgrade without a page reload never shows both hints stacked.
+ */
+const RETIRED_SUFFIX = " | Double-click to rename";
+
+export function setupHistoryTitles(): Disposer {
 	restoreAllTitles();
-	// Kept so the disposer can genuinely removeEventListener, rather than only
-	// clearing the bound flag and leaking the handler on Arena's own element.
-	const bound: Array<{ el: HTMLElement; handler: EventListener }> = [];
+	// Re-runs on every debounced DOM mutation (SPA lazy load), so the hint must
+	// be idempotent: `includes` keeps it from stacking, and also re-adds it if
+	// Arena's React reset the title on an element we already visited.
 	queryHistoryLinks().forEach((itemEl) => {
 		const href = itemEl.getAttribute("href") || "";
 		const sid = sessionIdFromHref(href);
 		if (!sid) return;
-		if (itemEl.dataset.aiSidebarEditable === "1") return;
-		itemEl.dataset.aiSidebarEditable = "1";
-		itemEl.title = (itemEl.title || "") + " | Double-click to rename";
-
-		// Double-click → inline edit. Hoisted into a named handler so it can be
-		// removed on teardown. The editor itself is shared with the context menu's
-		// rename item; see ui/inlineRename.ts for why there is only one copy.
-		const handler = (e: Event) => {
-			e.preventDefault();
-			e.stopPropagation();
-			const target =
-				(e.target as HTMLElement).closest("span, div, p") || itemEl;
-			beginInlineRename({
-				target,
-				initial: (target.textContent || "").trim(),
-				onCommit: (newText) => setSessionCustomTitle(sid, newText),
-			});
-		};
-		itemEl.addEventListener("dblclick", handler, true);
-		bound.push({ el: itemEl, handler });
-	});
-
-	return () => {
-		for (const { el, handler } of bound) {
-			el.removeEventListener("dblclick", handler, true);
-			delete el.dataset.aiSidebarEditable;
+		let title = itemEl.title || "";
+		if (title.endsWith(RETIRED_SUFFIX)) {
+			title = title.slice(0, -RETIRED_SUFFIX.length);
 		}
-		bound.length = 0;
-	};
+		if (!title.includes(HINT_SUFFIX)) {
+			itemEl.title = title + HINT_SUFFIX;
+		}
+	});
+	// Restoring is one-shot and idempotent — there are no listeners to tear down.
+	// The Disposer shape stays so content.ts can register it like every setup.
+	return () => {};
 }
