@@ -29,3 +29,6 @@ dist-ssr
 *.sln
 *.sw?
 coverage/
+
+# Patch dumps from GitHub web-UI branches (PR #6 landed a 20k-line .patch at the root; never again)
+*.patch

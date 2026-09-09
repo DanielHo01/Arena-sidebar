@@ -326,7 +326,7 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 - [x] 消息搜索（标题 / 双预览 / 全文正文；fuzzy 暂未做）
 - [x] 跨标签页同步（文件夹、会话索引、隐藏轮次；面板开合为各标签独立）
 - [x] 浮动按钮快捷键（Alt+S 开关面板）
-- [ ] 深色模式适配
+- [x] 深色模式适配（面板 🌓 按钮：auto→light→dark；auto 跟随页面 `class="dark"`/`data-theme`，否则回退到系统主题；选择持久化并跨标签页同步。FAB 同时改为不透明底板，修复其在任意页面背景上不可见的问题）
 
 ---
 

@@ -6,6 +6,8 @@ import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
 import { ICON_X_SVG, UI_STYLES } from "../styles";
 import { exportConversation, summarizeRounds } from "../modals";
+import { cycleThemeMode } from "../../features/theme";
+import { THEME_GLYPHS } from "../../platform/theme";
 
 // ─── Panel skeleton ─────────────────────────────────────────────────────────────────────
 
@@ -112,6 +114,25 @@ export function ensurePanelSkeleton(
 		});
 		headerActions.appendChild(sumBtn);
 	}
+
+	// Theme button — auto → light → dark (features/theme.ts persists the
+	// choice and repaints every tab). The button is its own status display,
+	// so it refreshes itself on click; a rebuild picks the mode up anyway.
+	const setThemeBtnLabel = () => {
+		themeBtn.textContent = THEME_GLYPHS[panel.themeMode];
+		themeBtn.title =
+			panel.themeMode === "auto"
+				? "Theme: auto (follow page) — click for light"
+				: panel.themeMode === "light"
+					? "Theme: light — click for dark"
+					: "Theme: dark — click for auto";
+	};
+	const themeBtn = makeHeaderBtn(THEME_GLYPHS[panel.themeMode], "Theme", () => {
+		cycleThemeMode();
+		setThemeBtnLabel();
+	});
+	setThemeBtnLabel();
+	headerActions.appendChild(themeBtn);
 
 	header.appendChild(headerActions);
 
