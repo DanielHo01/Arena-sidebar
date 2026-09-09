@@ -56,7 +56,11 @@ const m = vi.hoisted(() => {
 		loadHiddenRounds: vi.fn(async () => {
 			order.push("loadHiddenRounds");
 		}),
+		loadDeletedMessages: vi.fn(async () => {
+			order.push("loadDeletedMessages");
+		}),
 		setupHiddenRoundsSync: vi.fn(() => vi.fn()),
+		setupDeletedMessagesSync: vi.fn(() => vi.fn()),
 		registerDisposer: vi.fn((d: () => void) => d),
 		disposeAll: vi.fn(),
 		initRouteState: vi.fn(),
@@ -118,7 +122,9 @@ vi.mock("../../src/platform/route", () => ({
 vi.mock("../../src/platform/storage", () => ({ storageGet: m.storageGet }));
 vi.mock("../../src/rounds", () => ({
 	loadHiddenRounds: m.loadHiddenRounds,
+	loadDeletedMessages: m.loadDeletedMessages,
 	setupHiddenRoundsSync: m.setupHiddenRoundsSync,
+	setupDeletedMessagesSync: m.setupDeletedMessagesSync,
 }));
 vi.mock("../../src/app/store", () => ({
 	registerDisposer: m.registerDisposer,
@@ -210,6 +216,25 @@ describe("content.ts assembler", () => {
 		await loadContent();
 
 		expect(m.setupHiddenRoundsSync).not.toHaveBeenCalled();
+	});
+
+	it("subscribes to cross-tab tombstone changes on a session route (#15)", async () => {
+		m.getSessionId.mockReturnValue("sess-7");
+
+		await loadContent();
+
+		expect(m.setupDeletedMessagesSync).toHaveBeenCalledWith(
+			"sess-7",
+			expect.any(Function),
+		);
+	});
+
+	it("does not subscribe to tombstone changes off a session route", async () => {
+		m.getSessionId.mockReturnValue("");
+
+		await loadContent();
+
+		expect(m.setupDeletedMessagesSync).not.toHaveBeenCalled();
 	});
 
 	it("keeps the panel closed off a session route", async () => {
@@ -310,6 +335,35 @@ describe("content.ts assembler", () => {
 			await h.rebuildForCurrentRoute();
 
 			expect(m.loadHiddenRounds).not.toHaveBeenCalled();
+		});
+
+		it("loads tombstones before restoring messages (#15)", async () => {
+			// loadFromStorage filters restored messages against the live
+			// tombstone set, so the set must be complete before that read
+			// applies — tombstones load first, messages and hidden flags
+			// follow together.
+			m.getSessionId.mockReturnValue("sess-1");
+			const h = await hooks();
+			m.order.length = 0;
+
+			await h.rebuildForCurrentRoute();
+
+			expect(m.loadDeletedMessages).toHaveBeenCalledWith("sess-1");
+			const tombstones = m.order.indexOf("loadDeletedMessages");
+			const hidden = m.order.indexOf("loadHiddenRounds");
+			const extract = m.order.indexOf("extractMessages");
+			expect(tombstones).toBeGreaterThanOrEqual(0);
+			expect(hidden).toBeGreaterThan(tombstones);
+			expect(extract).toBeGreaterThan(tombstones);
+		});
+
+		it("skips the tombstone load with no session id", async () => {
+			m.getSessionId.mockReturnValue("");
+			const h = await hooks();
+
+			await h.rebuildForCurrentRoute();
+
+			expect(m.loadDeletedMessages).not.toHaveBeenCalled();
 		});
 
 		it("binds the session id onto the store", async () => {

@@ -104,6 +104,29 @@ describe("computeRounds", () => {
 		expect(inputs).toEqual(frozen);
 	});
 
+	it("marks a round edited when any of its messages is locally edited (#15)", () => {
+		const rounds = computeRounds([
+			msg("u1", "user", "q1"),
+			{ ...msg("a1", "assistant", "r1"), edited: true },
+			msg("u2", "user", "q2"),
+			msg("a2", "assistant", "r2"),
+		]);
+		expect(rounds[0].edited).toBe(true);
+		expect(rounds[1].edited).toBeUndefined();
+	});
+
+	it("marks lead-assistant rounds as edited and userless (#15)", () => {
+		const rounds = computeRounds([
+			{ ...msg("a0", "assistant", "lead"), edited: true },
+			msg("u1", "user", "q1"),
+			msg("a1", "assistant", "r1"),
+		]);
+		expect(rounds[0].edited).toBe(true);
+		expect(rounds[0].hasUserTurn).toBe(false);
+		expect(rounds[1].hasUserTurn).toBe(true);
+		expect(rounds[1].edited).toBeUndefined();
+	});
+
 	it("battle shape: one user turn plus both anonymous replies stay one round (#14)", () => {
 		// A battle round is user → Model A → Model B. Grouping already treats
 		// "every assistant reply after a user turn" as one round — pin that so

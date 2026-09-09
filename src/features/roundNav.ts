@@ -3,7 +3,13 @@
 
 import type { SidebarMessage } from "../types";
 import { cachedElements } from "../state";
-import { conversationStore } from "../conversationStore";
+import { conversationStore, rebuildRounds } from "../conversationStore";
+import { baseKey } from "../core/fingerprint";
+import {
+	deletedMessageKeys,
+	persistDeletedMessages,
+	tombstoneKey,
+} from "../rounds";
 
 // ─── Scroll to round: navigate to the round's DOM anchor ─────────────────────────
 
@@ -67,4 +73,31 @@ export function getMessagesForRound(roundId: string): SidebarMessage[] {
 		startMsgIdx,
 		endIdx > startMsgIdx ? endIdx : conversationStore.messages.length,
 	);
+}
+
+// ─── Local round delete (#15) ─────────────────────────────────────────────────
+//
+// Hard delete: the round's messages leave the store and their fingerprints are
+// tombstoned (rounds.ts) so the next DOM re-extract cannot resurrect them.
+// Unlike ✕ hide there is no restore — the UI arms the button first (two
+// clicks) instead. Extension-visible only; arena.ai itself is never touched.
+
+/**
+ * Delete every message of `roundId` from the store. Returns false when the
+ * round has no messages (unknown id, or already deleted).
+ */
+export function deleteRound(roundId: string): boolean {
+	const msgs = getMessagesForRound(roundId);
+	if (msgs.length === 0) return false;
+	for (const m of msgs) {
+		deletedMessageKeys.add(tombstoneKey(baseKey(m), m.occurrence ?? 0));
+	}
+	persistDeletedMessages();
+	const ids = new Set(msgs.map((m) => m.id));
+	conversationStore.messages = conversationStore.messages.filter(
+		(m) => !ids.has(m.id),
+	);
+	rebuildRounds();
+	void conversationStore.saveToStorage();
+	return true;
 }

@@ -17,6 +17,8 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ 正序/倒序切换
 - ✅ 实时搜索过滤（标题 / 双预览 / 任意消息全文）
 - ✅ **隐藏轮次** — ✕ 隐藏 / ↩ 恢复，按会话持久化（`hidden-rounds:{sessionId}`），跨标签页同步
+- ✅ **编辑消息** — ✏️ 内联修正已发送的消息（仅扩展内可见，arena.ai 不动），防重提保护
+- ✅ **删除轮次** — 🗑️ 两次点击确认硬删除，指纹 tombstone 按会话持久化，刷新不复活，跨标签页同步
 - ✅ 实时检测新消息（MutationObserver + 轮询）
 
 ### 会话管理
@@ -24,7 +26,7 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 - ✅ **Session Library** — 内嵌 Arena 左侧栏，可展开/折叠
 - ✅ **会话文件夹**（Inbox / Archive，自定义文件夹）
 - ✅ **右键菜单**（Rename / Move to folder）
-- ✅ **标题自定义** — 双击或右键 Rename，统一优先级：customTitle > title > sessionId 前缀
+- ✅ **标题自定义** — 右键 Rename（#17 后唯一入口），统一优先级：customTitle > title > sessionId 前缀
 - ✅ **持久化恢复** — 刷新后恢复 loaded rounds
 
 ### 导出与摘要
@@ -311,7 +313,7 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 ## 已知限制
 
 - Battle 盲测模式仅显示提示（双模型并排导航暂不支持），Direct / Max 模式功能完整
-- 不支持消息编辑 / 删除 / 新建（只读）
+- 消息编辑 / 删除仅扩展内生效（arena.ai 没有消息级编辑 API，官方只支持会话归档后删除）；不支持新建消息
 - 自定义标题保存在 `chrome.storage.local`（每个扩展实例独立）
 - 隐藏轮次不持久化到 Direct Chat（无会话 id 可挂靠，与消息存储同生命周期）
 

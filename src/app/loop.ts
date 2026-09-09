@@ -13,12 +13,16 @@
 
 import type { Disposer } from "../types";
 import { panel, timers } from "../state";
-import { conversationStore, refreshStore } from "../conversationStore";
+import {
+	conversationStore,
+	dropTombstonedMessages,
+	refreshStore,
+} from "../conversationStore";
 import { extractMessages } from "../extract";
 import { pollCaptures } from "../capture";
 import { isPreScrollActive, startPreScroll } from "../features/prescroll";
 import { resetSessionState as appResetSessionState } from "./store";
-import { setupHiddenRoundsSync } from "../rounds";
+import { setupDeletedMessagesSync, setupHiddenRoundsSync } from "../rounds";
 import {
 	ensureArenaFolderEntry,
 	toggleArenaSessionLibrarySection,
@@ -48,6 +52,8 @@ let observer: MutationObserver | null = null;
  * previous handle; teardown also happens in startDomLoop's disposer.
  */
 let hiddenSync: Disposer | null = null;
+/** Same, for deleted-message tombstones (#15). Re-subscribed together. */
+let deletedSync: Disposer | null = null;
 
 /** Seed the route key from the current location. Call once at bootstrap. */
 export function initRouteState(): void {
@@ -76,8 +82,18 @@ function handleRouteChange(hooks: LoopHooks): void {
 	// loads them from storage, and this keeps cross-tab writes in step.
 	hiddenSync?.();
 	hiddenSync = null;
+	deletedSync?.();
+	deletedSync = null;
 	const sid = getSessionId(location.pathname);
 	if (sid) hiddenSync = setupHiddenRoundsSync(sid, hooks.refreshUI);
+	// #15: a remote 🗑️ must remove live rows, not just re-render them —
+	// hidden flags filter at render time, but deleted messages have to leave
+	// the store or the other tab keeps showing (and re-saving) them.
+	if (sid)
+		deletedSync = setupDeletedMessagesSync(sid, () => {
+			dropTombstonedMessages();
+			hooks.refreshUI();
+		});
 	// Phase 1: force-load the new session's virtualised history before
 	// rebuilding. Previously this path called rebuildForCurrentRoute() directly
 	// and preScrollDone stayed true from bootstrap, so a switched-to session only
@@ -135,6 +151,8 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 		}
 		hiddenSync?.();
 		hiddenSync = null;
+		deletedSync?.();
+		deletedSync = null;
 	};
 }
 

@@ -26,6 +26,8 @@ function makeLeadRound(lead: SidebarMessage, index: number): SidebarRound {
 		userPreview: undefined,
 		assistantPreview: lead.content.slice(0, 100),
 		assistantCount: 1,
+		edited: lead.edited || undefined,
+		hasUserTurn: false,
 	};
 }
 
@@ -38,6 +40,8 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 	let currentFirstUser: SidebarMessage | null = null;
 	let currentFirstAssistant: SidebarMessage | null = null;
 	let currentAssistantCount = 0;
+	// #15: local-edit tracking (see SidebarRound.edited/hasUserTurn)
+	let currentHasEdited = false;
 
 	const pushRound = (r: SidebarRound) => {
 		// Sprint 8: fill preview fields before pushing — but never clobber values the
@@ -48,6 +52,11 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 		r.assistantPreview ??=
 			currentFirstAssistant?.content.slice(0, 100) || undefined;
 		r.assistantCount ??= currentAssistantCount;
+		// #15: the lead round sets both by hand (above); user rounds always
+		// have a user turn by construction. `|| undefined` keeps unedited
+		// rounds free of an explicit false in persisted payloads.
+		r.edited ??= currentHasEdited || undefined;
+		r.hasUserTurn ??= true;
 		rounds.push(r);
 	};
 
@@ -71,6 +80,7 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 			currentFirstUser = msg;
 			currentFirstAssistant = null;
 			currentAssistantCount = 0;
+			currentHasEdited = false;
 			current = {
 				id: msg.id,
 				title: msg.content.slice(0, 80),
@@ -85,6 +95,7 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 		if (current !== null) {
 			current.messageCount++;
 			if (msg.domId) current.hasAnchor = true;
+			if (msg.edited) currentHasEdited = true;
 			if (msg.role === "assistant") {
 				currentAssistantCount++;
 				if (currentFirstAssistant === null) currentFirstAssistant = msg;

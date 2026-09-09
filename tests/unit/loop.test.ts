@@ -35,6 +35,7 @@ const store = vi.hoisted(() => ({
 vi.mock("../../src/conversationStore", () => ({
 	conversationStore: store,
 	refreshStore: mocks.refreshStore,
+	dropTombstonedMessages: vi.fn(() => false),
 }));
 vi.mock("../../src/extract", () => ({
 	extractMessages: mocks.extractMessages,
@@ -302,13 +303,17 @@ describe("startDomLoop", () => {
 		const keys = mocks.onStorageChanged.mock.calls.map((c) => c[0]);
 		expect(keys).toEqual([
 			"edge-ai-sidebar:hidden-rounds:bbb",
+			"edge-ai-sidebar:deleted-messages:bbb",
 			"edge-ai-sidebar:hidden-rounds:ccc",
+			"edge-ai-sidebar:deleted-messages:ccc",
 		]);
 		const disposers = mocks.onStorageChanged.mock.results.map(
 			(r) => r.value as ReturnType<typeof vi.fn>,
 		);
-		expect(disposers[0]).toHaveBeenCalled(); // bbb's listener dropped
-		expect(disposers[1]).not.toHaveBeenCalled(); // ccc's still live
+		expect(disposers[0]).toHaveBeenCalled(); // bbb's hidden listener dropped
+		expect(disposers[1]).toHaveBeenCalled(); // bbb's tombstone listener dropped
+		expect(disposers[2]).not.toHaveBeenCalled(); // ccc's hidden still live
+		expect(disposers[3]).not.toHaveBeenCalled(); // ccc's tombstone still live
 	});
 
 	it("ignores query-string churn on a session route", async () => {

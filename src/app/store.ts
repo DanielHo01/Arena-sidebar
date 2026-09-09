@@ -26,7 +26,7 @@ import { conversationStore } from "../conversationStore";
 import { resetExtractState } from "../extract";
 import { resetPreScroll } from "../features/prescroll";
 import { resetLibrarySection } from "../ui/arenaSidebar";
-import { resetHiddenRounds } from "../rounds";
+import { resetDeletedMessages, resetHiddenRounds } from "../rounds";
 
 /**
  * Clear all session-scoped state and adopt `sessionId`.
@@ -49,6 +49,7 @@ export function resetSessionState(sessionId: string): void {
 	resetRscState();
 	resetLibrarySection();
 	resetHiddenRounds();
+	resetDeletedMessages();
 
 	panel.currentRoundIdx = 0;
 	panel.highlightInitialized = false;
