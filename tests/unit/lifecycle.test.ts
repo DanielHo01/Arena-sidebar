@@ -117,6 +117,12 @@ describe("resetSessionState", () => {
 		expect(panel.highlightInitialized).toBe(false);
 	});
 
+	it("resets reveal mode so a new session starts with hidden rounds hidden", () => {
+		panel.showHiddenRounds = true;
+		resetSessionState("s");
+		expect(panel.showHiddenRounds).toBe(false);
+	});
+
 	it("clears the render key so the new session's first render is not skipped", () => {
 		// This replaces the fab.prevRoundIds residual state. The fast path in
 		// refreshUI compares a single renderKey now, and a stale key from the

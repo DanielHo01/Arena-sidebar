@@ -12,6 +12,7 @@
 import type { SidebarRound } from "../types";
 import { conversationStore } from "../conversationStore";
 import { panel } from "../state";
+import { hiddenRoundIds } from "../rounds";
 import { renderKey } from "../core/renderKey";
 import { isSessionRoute } from "../platform/route";
 import { buildFab } from "./fab";
@@ -80,11 +81,21 @@ export function renderUI(shadowRoot: ShadowRoot, onRefresh: () => void): void {
 	const storeRounds = conversationStore.rounds;
 	const msgCount = conversationStore.messages.length;
 
+	// Reveal mode with nothing hidden is meaningless: the user restored every
+	// round (or another tab did). Exit it here, or the next hidden change —
+	// e.g. a cross-tab sync — renders the round dimmed-with-↩ instead of
+	// filtered out. Browser-E2E-found (cross-tab hide step).
+	if (panel.showHiddenRounds && hiddenRoundIds.size === 0) {
+		panel.showHiddenRounds = false;
+	}
+
 	const key = renderKey({
 		isOpen: panel.isOpen,
 		searchQuery: panel.searchQuery,
 		reverseOrder: panel.reverseOrder,
 		roundIds: storeRounds.map((r) => r.id),
+		hiddenRoundIds: Array.from(hiddenRoundIds),
+		showHiddenRounds: panel.showHiddenRounds,
 	});
 
 	// Fast-path: nothing the rendered output depends on has changed, and the

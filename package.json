@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "node tests/e2e/run.mjs"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
@@ -25,6 +26,7 @@
     "tsx": "^4.23.5",
     "typescript": "~6.0.2",
     "vite": "^8.1.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "ws": "^8.21.3"
   }
 }

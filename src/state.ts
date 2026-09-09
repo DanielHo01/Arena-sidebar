@@ -15,6 +15,12 @@ export const panel = {
 	highlightInitialized: false,
 	isDragging: false,
 	/**
+	 * Reveal mode for hidden rounds — the "N hidden rounds" footer bar in the
+	 * list toggles it. Session-scoped like searchQuery: a new conversation
+	 * starts with its hidden rounds actually hidden.
+	 */
+	showHiddenRounds: false,
+	/**
 	 * The last renderKey() refreshUI produced. Replaces the three ad-hoc
 	 * prev-state fields (prevIsOpen, prevSearchActive, fab.prevRoundIds) that
 	 * each tracked one slice of "what did I last render" and disagreed with

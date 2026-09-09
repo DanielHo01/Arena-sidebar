@@ -53,6 +53,9 @@ export function resetSessionState(sessionId: string): void {
 	panel.currentRoundIdx = 0;
 	panel.highlightInitialized = false;
 	panel.searchQuery = "";
+	// A new conversation starts with hidden rounds hidden — reveal mode is a
+	// view state tied to the session being browsed, like the search query.
+	panel.showHiddenRounds = false;
 	// Force the first render after a route change: the key describes the old
 	// session's rounds, and leaving it would let the fast path skip the render
 	// entirely (the fab.prevRoundIds bug, one level up).

@@ -9,6 +9,17 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// getMessagesForRound reads the live conversation store; for the full-text
+// filter tests it must be steerable per round. scrollToRound is along for the
+// ride (roundItem imports the same module) and no test here scrolls.
+const roundNavMocks = vi.hoisted(() => ({
+	getMessagesForRound: vi.fn((_roundId: string) => [] as { content: string }[]),
+}));
+vi.mock("../../src/features/roundNav", () => ({
+	scrollToRound: vi.fn(),
+	getMessagesForRound: roundNavMocks.getMessagesForRound,
+}));
+
 import { reconcileList } from "../../src/ui/panel/list";
 import { hiddenRoundIds } from "../../src/rounds";
 import { panel } from "../../src/state";
@@ -49,8 +60,10 @@ describe("reconcileList", () => {
 		// Module-level state shared with the whole test process. panel.searchQuery
 		// in particular leaks between tests and silently changes the filter.
 		panel.searchQuery = "";
+		panel.showHiddenRounds = false;
 		hiddenRoundIds.clear();
 		refreshUI.mockClear();
+		roundNavMocks.getMessagesForRound.mockReset().mockReturnValue([]);
 	});
 
 	it("renders one row per round, in order", () => {
@@ -216,5 +229,204 @@ describe("reconcileList", () => {
 
 		expect(list.contains(marker)).toBe(true);
 		expect(rowIds(list)).toEqual(["a"]);
+	});
+
+	describe("hidden-rounds footer bar", () => {
+		it("is absent when nothing is hidden", () => {
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")).toBeNull();
+		});
+
+		it("shows the hidden count and stays after the rows", () => {
+			hiddenRoundIds.add("b");
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			const bar = list.querySelector(".hidden-bar");
+			expect(bar?.textContent).toBe("1 hidden round — click to show");
+			// Rounds first, bar last — the reconcile loop positions rows by index,
+			// so the bar must never sit between them.
+			expect(list.lastElementChild).toBe(bar);
+			expect(rowIds(list)).toEqual(["a", "c"]);
+		});
+
+		it("pluralises the count", () => {
+			hiddenRoundIds.add("a");
+			hiddenRoundIds.add("b");
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")?.textContent).toBe(
+				"2 hidden rounds — click to show",
+			);
+		});
+
+		it("keeps the bar when every round is hidden — the escape hatch", () => {
+			// Without the bar here, ✕ would be a dead end: no rows, no way back.
+			hiddenRoundIds.add("a");
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(list.querySelector(".empty")?.textContent).toBe(
+				"No messages detected",
+			);
+			expect(list.querySelector(".hidden-bar")).not.toBeNull();
+			expect(list.lastElementChild?.className).toBe("hidden-bar");
+		});
+
+		it("removes the bar once nothing is hidden anymore", () => {
+			hiddenRoundIds.add("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			expect(list.querySelector(".hidden-bar")).not.toBeNull();
+
+			hiddenRoundIds.delete("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")).toBeNull();
+			expect(rowIds(list)).toEqual(["a", "b"]);
+		});
+
+		it("toggles reveal mode on click and refreshes", () => {
+			hiddenRoundIds.add("b");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			refreshUI.mockClear();
+
+			(list.querySelector(".hidden-bar") as HTMLElement).click();
+
+			expect(panel.showHiddenRounds).toBe(true);
+			expect(refreshUI).toHaveBeenCalledTimes(1);
+		});
+
+		it("keeps the bar after the rows when reveal mode fills an empty list", () => {
+			// The empty state renders the bar with no rows; entering reveal
+			// mode then CREATES rows after it. Row insertion uses
+			// insertBefore(el, children[idx] ?? null), and for an idx past the
+			// last row that ?? null APPENDS — past the bar. Without the
+			// re-append guard the bar would strand between rows.
+			hiddenRoundIds.add("a");
+			hiddenRoundIds.add("b");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			expect(list.querySelector(".empty")).not.toBeNull();
+
+			panel.showHiddenRounds = true;
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a", "b"]);
+			const bar = list.querySelector(".hidden-bar");
+			expect(list.lastElementChild).toBe(bar);
+			expect(list.children[1]).not.toBe(bar); // not between the rows
+		});
+	});
+
+	describe("reveal mode", () => {
+		it("renders hidden rounds in place, dimmed, keeping order", () => {
+			hiddenRoundIds.add("b");
+			panel.showHiddenRounds = true;
+
+			reconcileList(list, [round("a"), round("b"), round("c")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a", "b", "c"]);
+			const hiddenRow = list.querySelector('[data-round-id="b"]');
+			expect(hiddenRow?.classList.contains("item-hidden")).toBe(true);
+			expect(
+				list
+					.querySelector('[data-round-id="a"]')
+					?.classList.contains("item-hidden"),
+			).toBe(false);
+		});
+
+		it("labels the bar for collapsing while active", () => {
+			hiddenRoundIds.add("b");
+			panel.showHiddenRounds = true;
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector(".hidden-bar")?.textContent).toBe(
+				"1 hidden round — click to hide again",
+			);
+		});
+
+		it("lets a row flip its flag without leaving the list", () => {
+			// In reveal mode a restored row stays in the diff, so its element
+			// must be updated in place, not rebuilt from scratch.
+			hiddenRoundIds.add("a");
+			panel.showHiddenRounds = true;
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+			const rowBefore = list.querySelector('[data-round-id="a"]');
+
+			hiddenRoundIds.delete("a");
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(list.querySelector('[data-round-id="a"]')).toBe(rowBefore);
+			expect(rowBefore?.classList.contains("item-hidden")).toBe(false);
+			expect(rowBefore?.querySelector(".item-visibility")?.textContent).toBe(
+				"✕",
+			);
+		});
+
+		it("still applies the search filter to hidden rounds", () => {
+			hiddenRoundIds.add("a");
+			panel.showHiddenRounds = true;
+			panel.searchQuery = "question b";
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["b"]);
+		});
+	});
+
+	describe("full-text search", () => {
+		it("matches a round whose message content contains the query but previews do not", () => {
+			// The previews are truncated at 60/100 chars; a word buried deeper in
+			// the message used to be unfindable. This is the whole point of the
+			// content pass.
+			roundNavMocks.getMessagesForRound.mockImplementation((id: string) =>
+				id === "a"
+					? [{ content: "a long answer that mentions xylophone near the end" }]
+					: [],
+			);
+			panel.searchQuery = "xylophone";
+
+			reconcileList(list, [round("a"), round("b")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+		});
+
+		it("matches content case-insensitively", () => {
+			roundNavMocks.getMessagesForRound.mockReturnValue([
+				{ content: "Deep dive into XYLOPHONE lore" },
+			]);
+			panel.searchQuery = "xylophone";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+		});
+
+		it("skips the content scan when the title already matches", () => {
+			// The || chain short-circuits: content is only read for rounds the
+			// cheap checks rejected. Pin it — per keystroke, that is the
+			// difference between a filter and a scan over every message.
+			panel.searchQuery = "question a";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(rowIds(list)).toEqual(["a"]);
+			expect(roundNavMocks.getMessagesForRound).not.toHaveBeenCalled();
+		});
+
+		it("shows the no-match placeholder when neither previews nor content match", () => {
+			roundNavMocks.getMessagesForRound.mockReturnValue([
+				{ content: "completely unrelated text" },
+			]);
+			panel.searchQuery = "zzz";
+
+			reconcileList(list, [round("a")], refreshUI);
+
+			expect(list.querySelector(".empty")?.textContent).toBe(
+				'No matches for "zzz"',
+			);
+		});
 	});
 });

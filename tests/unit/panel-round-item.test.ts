@@ -8,9 +8,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createRoundEl, updateRoundEl } from "../../src/ui/panel/roundItem";
-import { hiddenRoundIds } from "../../src/rounds";
+import {
+	hiddenRoundIds,
+	loadHiddenRounds,
+	resetHiddenRounds,
+} from "../../src/rounds";
 import { panel } from "../../src/state";
 import { setClipboardBackend } from "../../src/platform/clipboard";
+import { setStorageBackend } from "../../src/platform/storage";
 import {
 	getMessagesForRound,
 	scrollToRound,
@@ -49,7 +54,10 @@ describe("createRoundEl", () => {
 		document.body.innerHTML = "";
 		// Both are module-level state shared across the whole test process; leaving
 		// either dirty makes a later test fail for the wrong reason.
-		hiddenRoundIds.clear();
+		// resetHiddenRounds also drops the adopted session id, so persistence
+		// tests start from a clean slate.
+		resetHiddenRounds();
+		setStorageBackend(null);
 		panel.isOpen = true;
 		panel.currentRoundIdx = 0;
 		mockScroll.mockClear();
@@ -239,5 +247,107 @@ describe("updateRoundEl", () => {
 		const bare = document.createElement("div");
 		expect(() => updateRoundEl(bare, round(), 1)).not.toThrow();
 		expect(bare.dataset.roundIdx).toBe("1");
+	});
+
+	it("flips the button and dimmed class when the round becomes hidden", () => {
+		const el = createRoundEl(round({ id: "r1" }), 0, vi.fn());
+		expect(hideButton(el).textContent).toBe("✕");
+		expect(el.classList.contains("item-hidden")).toBe(false);
+
+		hiddenRoundIds.add("r1");
+		updateRoundEl(el, round({ id: "r1" }), 0);
+
+		expect(hideButton(el).textContent).toBe("↩");
+		expect(hideButton(el).title).toBe("Restore this round");
+		expect(el.classList.contains("item-hidden")).toBe(true);
+	});
+
+	it("flips back when the flag is cleared", () => {
+		hiddenRoundIds.add("r1");
+		const el = createRoundEl(round({ id: "r1" }), 0, vi.fn());
+		expect(hideButton(el).textContent).toBe("↩");
+
+		hiddenRoundIds.delete("r1");
+		updateRoundEl(el, round({ id: "r1" }), 0);
+
+		expect(hideButton(el).textContent).toBe("✕");
+		expect(hideButton(el).title).toBe("Hide this round");
+		expect(el.classList.contains("item-hidden")).toBe(false);
+	});
+});
+
+describe("hidden-round persistence", () => {
+	/** Minimal in-memory StorageBackend recording writes in `data`. */
+	function memoryBackend() {
+		const data = new Map<string, unknown>();
+		return {
+			data,
+			backend: {
+				get: async (keys: string | string[] | null) => {
+					if (keys === null) return Object.fromEntries(data);
+					const list = Array.isArray(keys) ? keys : [keys];
+					return Object.fromEntries(
+						list.filter((k) => data.has(k)).map((k) => [k, data.get(k)]),
+					);
+				},
+				set: async (items: Record<string, unknown>) => {
+					for (const [k, v] of Object.entries(items)) data.set(k, v);
+				},
+				remove: async (keys: string | string[]) => {
+					for (const k of Array.isArray(keys) ? keys : [keys]) data.delete(k);
+				},
+			},
+		};
+	}
+
+	it("persists a hide to the adopted session's key", async () => {
+		const { data, backend } = memoryBackend();
+		setStorageBackend(backend);
+		await loadHiddenRounds("s1");
+
+		const el = createRoundEl(round({ id: "r9" }), 0, vi.fn());
+		hideButton(el).click();
+
+		expect(data.get("edge-ai-sidebar:hidden-rounds:s1")).toEqual(["r9"]);
+	});
+
+	it("renders a hidden round dimmed with a restore button", async () => {
+		const { data, backend } = memoryBackend();
+		data.set("edge-ai-sidebar:hidden-rounds:s1", ["r9"]);
+		setStorageBackend(backend);
+		await loadHiddenRounds("s1");
+
+		const el = createRoundEl(round({ id: "r9" }), 0, vi.fn());
+		expect(el.classList.contains("item-hidden")).toBe(true);
+		expect(hideButton(el).textContent).toBe("↩");
+	});
+
+	it("restores a hidden round and persists the removal", async () => {
+		const { data, backend } = memoryBackend();
+		data.set("edge-ai-sidebar:hidden-rounds:s1", ["r9"]);
+		setStorageBackend(backend);
+		await loadHiddenRounds("s1");
+
+		const refreshUI = vi.fn();
+		const el = createRoundEl(round({ id: "r9" }), 0, refreshUI);
+		hideButton(el).click();
+
+		expect(hiddenRoundIds.has("r9")).toBe(false);
+		expect(data.get("edge-ai-sidebar:hidden-rounds:s1")).toEqual([]);
+		expect(refreshUI).toHaveBeenCalledTimes(1);
+	});
+
+	it("hides without persisting when no session was adopted (direct chat)", async () => {
+		const { data, backend } = memoryBackend();
+		setStorageBackend(backend);
+		await loadHiddenRounds(""); // direct-chat routes have no session id
+
+		const el = createRoundEl(round({ id: "r1" }), 0, vi.fn());
+		hideButton(el).click();
+
+		// The flag still works in memory — it just has the same lifetime as the
+		// rounds themselves, which direct chats never persist either.
+		expect(hiddenRoundIds.has("r1")).toBe(true);
+		expect(data.size).toBe(0);
 	});
 });

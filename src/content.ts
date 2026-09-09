@@ -45,6 +45,7 @@ import { setupHistoryContextMenu } from "./ui/contextMenu";
 import { setupHistoryTitleEditing } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
 import { storageGet } from "./platform/storage";
+import { loadHiddenRounds, setupHiddenRoundsSync } from "./rounds";
 import { disposeAll, registerDisposer } from "./app/store";
 import {
 	initRouteState,
@@ -68,7 +69,12 @@ async function rebuildForCurrentRoute(): Promise<void> {
 	const sessionId = getSessionId(location.pathname);
 	if (sessionId) {
 		conversationStore.sessionId = sessionId;
-		await conversationStore.loadFromStorage(sessionId);
+		// The message record and the hidden-round flags are independent keys —
+		// restore them together before the first post-route render.
+		await Promise.all([
+			conversationStore.loadFromStorage(sessionId),
+			loadHiddenRounds(sessionId),
+		]);
 	}
 	refreshStore({
 		bootstrap: extractBootstrapMessages(),
@@ -179,6 +185,13 @@ try {
 		// registry, so there is one place to tear the whole extension down.
 		registerDisposer(setupFoldersStorageSync()); // Phase 10A: cross-tab storage changes
 		registerDisposer(setupSessionMetaSync()); // Phase 3: folders subscribes to store changes
+		// Hidden-round flags: rebuildForCurrentRoute loads them per session; this
+		// keeps the session this page starts on in step with other tabs. Route
+		// changes re-subscribe from app/loop.ts handleRouteChange.
+		const initialSid = getSessionId(location.pathname);
+		if (initialSid) {
+			registerDisposer(setupHiddenRoundsSync(initialSid, refreshUI));
+		}
 		registerDisposer(setupHistoryContextMenu()); // Phase 10A: right-click menu on history links
 		registerDisposer(setupHistoryTitleEditing()); // restore/rename custom history titles
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
@@ -198,15 +211,19 @@ try {
 			window.addEventListener("pagehide", disposeAll, { once: true });
 			// B3 virtual-scroll fix: pre-scroll to load all messages before first extract.
 			startPreScroll(() => {
-				// After pre-scroll: extract + rebuild for current route.
-				void rebuildForCurrentRoute();
-				console.log(
-					"[AI Sidebar] store: total messages=" +
-						conversationStore.messages.length +
-						" rounds=" +
-						conversationStore.rounds.length,
-				);
-				refreshUI();
+				// After pre-scroll: extract + rebuild for the current route. The
+				// rebuild is async (storage restore), and re-rendering before it
+				// lands races an empty store — on a quiet page nothing else would
+				// trigger another render until the 30s rescan. Render after.
+				void rebuildForCurrentRoute().then(() => {
+					console.log(
+						"[AI Sidebar] store: total messages=" +
+							conversationStore.messages.length +
+							" rounds=" +
+							conversationStore.rounds.length,
+					);
+					refreshUI();
+				});
 			});
 		}
 	};
