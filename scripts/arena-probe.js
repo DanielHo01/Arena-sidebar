@@ -27,7 +27,9 @@
 	try {
 		// ── 1. 模式 tab（#14 信号 1 的依据） ──────────────────────────
 		out.tabs = [
-			...document.querySelectorAll('[role="tab"], button[aria-pressed]'),
+			...document.querySelectorAll(
+				'[role="tab"], button[aria-pressed], button[data-state]',
+			),
 		]
 			.slice(0, 20)
 			.map((el) => ({

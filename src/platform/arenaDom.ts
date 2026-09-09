@@ -175,7 +175,7 @@ export function resolveQuickNavContainer(): HTMLElement | null {
 	return probe.ok ? probe.el : null;
 }
 
-// ── Battle-mode detection (#14) ──────────────────────────────────────────────
+// ── Battle-mode detection (#14, #21) ─────────────────────────────────────────
 //
 // A battle round is two anonymous responses side by side plus a vote bar — not
 // the single user/assistant thread the extractor understands. When nothing
@@ -186,37 +186,49 @@ export function resolveQuickNavContainer(): HTMLElement | null {
 // Two independent signals; either one fires. Detection ONLY renames the empty
 // state — when extraction does find messages, rounds render exactly as in
 // Direct Chat — so a miss degrades to today's message and can never break
-// round rendering. That is what makes the vote-label signal shippable while
-// its exact labels are still unverified on the live UI (the sandbox cannot
-// reach arena.ai; see tests/e2e/MANUAL-SMOKE.md §⑥ to confirm or adjust).
+// round rendering.
 //
-// Signal 1 — the Battle Mode tab is the active one. Arena is a shadcn/Tailwind
-// app, and shadcn Tabs render role="tab" with data-state="active"; the
-// aria-selected and aria-pressed variants cover a plain-toggle implementation.
-
-const ACTIVE_TAB_SELECTOR =
-	'[role="tab"][aria-selected="true"], [role="tab"][data-state="active"], button[aria-pressed="true"]';
-
+// Signal 1 — the Battle Mode control is the active one. Arena is a
+// shadcn/Tailwind app. The live 2026-09 UI (#21) is not role=tab: it is a
+// <button data-state="open"> whose text is still "Battle Mode". data-state=
+// active/open and aria-pressed cover that; the role=tab variants stay for
+// older markup. The text gate (battle / 对战 / 盲测) is load-bearing — an
+// open dropdown is also data-state=open and must not trip this.
+//
 // Signal 2 — the battle vote bar. One label proves nothing (a chat about
 // voting mentions "tie"), so a quorum of distinct labels is required.
+// English and Chinese fill the SAME four slots, so a mixed UI does not
+// double-count. "都好" is a prefix of "都不好"; the lookahead keeps them
+// as separate votes.
+
+const ACTIVE_MODE_SELECTOR = [
+	'[role="tab"][aria-selected="true"]',
+	'[role="tab"][data-state="active"]',
+	'button[aria-pressed="true"]',
+	'button[data-state="active"]',
+	'button[data-state="open"]',
+].join(", ");
+
+const BATTLE_MODE_LABEL = /battle|对战|盲测/i;
+
 const BATTLE_VOTE_PATTERNS: RegExp[] = [
-	/a is better/,
-	/b is better/,
-	/\btie\b/,
-	/both bad/,
+	/a is better|a\s*更好/,
+	/b is better|b\s*更好/,
+	/\btie\b|都好(?!不)/,
+	/both bad|都不好/,
 ];
 const BATTLE_VOTE_QUORUM = 3;
 
 /**
  * True when the page looks like an arena.ai battle (blind side-by-side)
- * conversation: the Battle Mode tab is active, or a quorum of the battle
+ * conversation: the Battle Mode control is active, or a quorum of the battle
  * vote labels is present. Scoped to `root` for tests; production passes
  * nothing and scans the document.
  */
 export function detectBattleMode(root: ParentNode = document): boolean {
-	const tabs = root.querySelectorAll(ACTIVE_TAB_SELECTOR);
+	const tabs = root.querySelectorAll(ACTIVE_MODE_SELECTOR);
 	for (const tab of tabs) {
-		if (/battle/i.test(tab.textContent || "")) return true;
+		if (BATTLE_MODE_LABEL.test(tab.textContent || "")) return true;
 	}
 	const seen = new Set<number>();
 	const buttons = root.querySelectorAll('button, [role="button"]');

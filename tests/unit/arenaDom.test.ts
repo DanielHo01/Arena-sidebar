@@ -317,4 +317,71 @@ describe("detectBattleMode", () => {
 	it("stays quiet on an empty document", () => {
 		expect(detectBattleMode()).toBe(false);
 	});
+
+	it("fires for a shadcn Battle Mode button with data-state=open (#21)", () => {
+		document.body.innerHTML = `
+			<button data-state="closed">Direct Chat</button>
+			<button data-state="open">Battle Mode</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires for data-state=active on a plain button, not only role=tab", () => {
+		document.body.innerHTML = `<button data-state="active">⚔️ Battle Mode</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("stays quiet when Battle Mode is visible but not the open control", () => {
+		// The nav entry is on every page. Signal 1 must require selected/open,
+		// or Direct/Max would always look like a battle.
+		document.body.innerHTML = `
+			<button data-state="open">Direct Chat</button>
+			<button data-state="closed">Battle Mode</button>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("stays quiet for an unrelated open dropdown", () => {
+		document.body.innerHTML = `<button data-state="open">Account</button>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("fires on the Chinese vote bar (#21)", () => {
+		document.body.innerHTML = `
+			<main>
+				<button>A 更好</button>
+				<button>B 更好</button>
+				<button>都好</button>
+				<button>都不好</button>
+			</main>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires at exactly three Chinese vote labels", () => {
+		document.body.innerHTML = `
+			<button>A 更好</button>
+			<button>B 更好</button>
+			<button>都好</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("does not let 都不好 also count as 都好", () => {
+		// Without the lookahead, "都不好" would fill both the tie and both-bad
+		// slots and, with one more label, fake a quorum.
+		document.body.innerHTML = `
+			<button>A 更好</button>
+			<button>都不好</button>`;
+		expect(detectBattleMode()).toBe(false);
+	});
+
+	it("treats English and Chinese labels as the same four votes", () => {
+		document.body.innerHTML = `
+			<button>A is better</button>
+			<button>B 更好</button>
+			<button>Tie</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
+
+	it("fires when an active control is labelled 对战", () => {
+		document.body.innerHTML = `<button data-state="open">对战模式</button>`;
+		expect(detectBattleMode()).toBe(true);
+	});
 });
