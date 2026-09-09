@@ -11,6 +11,12 @@ export const panel = {
 	isOpen: false,
 	reverseOrder: true,
 	searchQuery: "",
+	/**
+	 * Theme preference — "auto" follows the page, light/dark force it.
+	 * User-level setting like reverseOrder: NOT reset between sessions, and
+	 * persisted + cross-tab synced by features/theme.ts under "themeMode".
+	 */
+	themeMode: "auto" as "auto" | "light" | "dark",
 	currentRoundIdx: 0,
 	highlightInitialized: false,
 	isDragging: false,

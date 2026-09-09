@@ -1,10 +1,14 @@
 // ui/styles/list.ts — the round list: rows, metadata, hover actions, previews.
+//
+// Every color is a var(--arena-*, light fallback) reference into the token
+// block in styles/base.ts — which is where dark mode lives. Adding a literal
+// here instead of a token silently opts that surface out of #9.
 
 /** .list / .item / .item-meta / .item-actions / preview rows. */
 export const PANEL_LIST_CSS = /* css */ `
   .list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px 8px; }
   .list::-webkit-scrollbar { width: 6px; }
-  .list::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.30); border-radius: 999px; }
+  .list::-webkit-scrollbar-thumb { background: var(--arena-scrollbar, rgba(156, 163, 175, 0.30)); border-radius: 999px; }
 
   /* Reveal mode renders hidden rounds dimmed, with ↩ instead of ✕. */
   .item-hidden { opacity: 0.55; }
@@ -16,15 +20,15 @@ export const PANEL_LIST_CSS = /* css */ `
     padding: 6px 8px;
     text-align: center;
     font-size: 10.5px;
-    color: #8b95a7;
-    border: 1px dashed rgba(139, 149, 167, 0.40);
+    color: var(--arena-fg-dim, #8b95a7);
+    border: 1px dashed var(--arena-fg-dim, rgba(139, 149, 167, 0.40));
     border-radius: 8px;
     cursor: pointer;
     user-select: none;
   }
   .hidden-bar:hover {
     color: var(--arena-blue, #4d7cff);
-    border-color: rgba(77, 124, 255, 0.50);
+    border-color: var(--arena-blue, rgba(77, 124, 255, 0.50));
   }
 
 
@@ -45,11 +49,11 @@ export const PANEL_LIST_CSS = /* css */ `
     color: inherit;
     font: inherit;
   }
-  .item:hover { background: rgba(0, 0, 0, 0.03); }
-  .item:active { background: rgba(0, 0, 0, 0.05); }
+  .item:hover { background: var(--arena-hover-faint, rgba(0, 0, 0, 0.03)); }
+  .item:active { background: var(--arena-active, rgba(0, 0, 0, 0.05)); }
 
   .item.current {
-    background: var(--arena-blue-alpha);
+    background: var(--arena-blue-alpha, rgba(77, 124, 255, 0.06));
   }
   .item.current::after {
     content: "";
@@ -59,7 +63,7 @@ export const PANEL_LIST_CSS = /* css */ `
     right: 0;
     width: 2px;
     border-radius: 999px;
-    background: var(--arena-blue);
+    background: var(--arena-blue, #4d7cff);
   }
 
   .item-meta {
@@ -75,7 +79,7 @@ export const PANEL_LIST_CSS = /* css */ `
     font-size: 9.5px;
     font-weight: 500;
     letter-spacing: 0.03em;
-    color: #b0b7c3;
+    color: var(--arena-fg-faint, #b0b7c3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -90,7 +94,7 @@ export const PANEL_LIST_CSS = /* css */ `
     border: none;
     border-radius: 5px;
     background: transparent;
-    color: #9ca3af;
+    color: var(--arena-fg-muted, #9ca3af);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -100,7 +104,7 @@ export const PANEL_LIST_CSS = /* css */ `
     padding: 0;
     transition: background 0.10s ease, color 0.10s ease;
   }
-  .item-action:hover { background: rgba(0, 0, 0, 0.06); color: #374151; }
+  .item-action:hover { background: var(--arena-hover-strong, rgba(0, 0, 0, 0.06)); color: var(--arena-fg, #374151); }
 
   .item-title {
     display: -webkit-box;
@@ -109,7 +113,7 @@ export const PANEL_LIST_CSS = /* css */ `
     overflow: hidden;
     font-size: 11px;
     line-height: 1.40;
-    color: #1f2937;
+    color: var(--arena-fg-strong, #1f2937);
     word-break: break-word;
   }
 
@@ -121,14 +125,14 @@ export const PANEL_LIST_CSS = /* css */ `
     overflow: hidden;
     font-size: 10.5px;
     line-height: 1.35;
-    color: #8b95a7;
+    color: var(--arena-fg-dim, #8b95a7);
     margin-top: 2px;
     word-break: break-word;
   }
 
   .empty {
     padding: 16px 8px;
-    color: #b0b7c3;
+    color: var(--arena-fg-faint, #b0b7c3);
     font-size: 11px;
     text-align: center;
   }
@@ -140,7 +144,7 @@ export const PANEL_LIST_CSS = /* css */ `
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(15, 23, 42, 0.40);
+    background: var(--arena-modal-scrim, rgba(15, 23, 42, 0.40));
     backdrop-filter: blur(6px);
   }
 
@@ -151,29 +155,29 @@ export const PANEL_LIST_CSS = /* css */ `
     flex-direction: column;
     gap: 12px;
     padding: 16px;
-    border-radius: var(--arena-radius);
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(0, 0, 0, 0.07);
+    border-radius: var(--arena-radius, 12px);
+    background: var(--arena-modal-bg, rgba(255, 255, 255, 0.96));
+    border: 1px solid var(--arena-border, rgba(0, 0, 0, 0.07));
     box-shadow: 0 20px 48px rgba(15, 23, 42, 0.20);
   }
 
-  .summary-title { font-size: 13.5px; font-weight: 600; color: #111827; }
+  .summary-title { font-size: 13.5px; font-weight: 600; color: var(--arena-fg-strong, #111827); }
 
   .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .summary-actions button {
-    border: 1px solid rgba(0, 0, 0, 0.07);
-    background: rgba(248, 250, 252, 0.96);
-    color: #374151;
+    border: 1px solid var(--arena-border, rgba(0, 0, 0, 0.07));
+    background: var(--arena-btn-surface, rgba(248, 250, 252, 0.96));
+    color: var(--arena-fg, #374151);
     border-radius: 8px;
     padding: 6px 11px;
     font-size: 11.5px;
     cursor: pointer;
   }
-  .summary-actions button:hover { background: rgba(241, 245, 249, 1); }
+  .summary-actions button:hover { background: var(--arena-btn-surface-hover, rgba(241, 245, 249, 1)); }
   .summary-actions button.primary {
-    background: var(--arena-blue);
-    border-color: var(--arena-blue);
+    background: var(--arena-blue, #4d7cff);
+    border-color: var(--arena-blue, #4d7cff);
     color: white;
   }
   .summary-actions button.primary:hover { opacity: 0.90; }
@@ -184,9 +188,9 @@ export const PANEL_LIST_CSS = /* css */ `
     width: 100%;
     resize: none;
     border-radius: 8px;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    background: white;
-    color: #111827;
+    border: 1px solid var(--arena-input-border, rgba(0, 0, 0, 0.06));
+    background: var(--arena-bg-input-focus, white);
+    color: var(--arena-fg-strong, #111827);
     padding: 10px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11px;

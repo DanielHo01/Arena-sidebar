@@ -54,6 +54,7 @@ import {
 	type LoopHooks,
 } from "./app/loop";
 import { setupKeyboardShortcuts } from "./ui/keyboard";
+import { setupTheme } from "./features/theme";
 import { renderUI } from "./ui/render";
 import { startPreScroll } from "./features/prescroll";
 
@@ -133,6 +134,10 @@ function ensureUI() {
 	}
 	console.log("[AI Sidebar] shadowRoot attached, calling refreshUI...");
 	try {
+		// Theme before the first paint: the host attribute must be in place
+		// while the very first render is styled, or a dark page gets one
+		// flash of light UI (features/theme.ts).
+		registerDisposer(setupTheme());
 		refreshUI();
 		void loadFabPosition();
 		// ensureUI is idempotent (guarded on shadowRoot), so this runs once.

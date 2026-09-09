@@ -68,6 +68,7 @@ const m = vi.hoisted(() => {
 		),
 		startPeriodicLoop: vi.fn(() => vi.fn()),
 		setupKeyboardShortcuts: vi.fn(() => vi.fn()),
+		setupTheme: vi.fn(() => vi.fn()),
 		renderUI: vi.fn(),
 		startPreScroll: vi.fn(),
 		setupRscCapture: vi.fn(() => vi.fn()),
@@ -131,6 +132,7 @@ vi.mock("../../src/app/loop", () => ({
 vi.mock("../../src/ui/keyboard", () => ({
 	setupKeyboardShortcuts: m.setupKeyboardShortcuts,
 }));
+vi.mock("../../src/features/theme", () => ({ setupTheme: m.setupTheme }));
 vi.mock("../../src/ui/render", () => ({ renderUI: m.renderUI }));
 vi.mock("../../src/features/prescroll", () => ({
 	startPreScroll: m.startPreScroll,
