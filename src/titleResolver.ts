@@ -3,7 +3,7 @@
 // Problem 2: titles came from three independent sources (historyTitle_ storage
 // keys, sessionMeta.title, round.title) that never synced. Resolution rule:
 //
-//   customTitle (user rename, double-click / context menu)  →  highest priority
+//   customTitle (user rename via the right-click menu)  →  highest priority
 //   title       (Arena's original title, written on first capture) → fallback
 //   sessionId prefix → last resort
 //

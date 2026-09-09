@@ -24,7 +24,7 @@ import {
 	toggleArenaSessionLibrarySection,
 } from "../ui/arenaSidebar";
 import { setupHistoryContextMenu } from "../ui/contextMenu";
-import { setupHistoryTitleEditing } from "../historyTitles";
+import { setupHistoryTitles } from "../historyTitles";
 import { getSessionId, routeKey } from "../platform/route";
 import { SCROLL_CONTAINER_SELECTOR } from "../platform/arenaDom";
 
@@ -110,7 +110,7 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 			const nextKey = routeKey(location.pathname, location.search);
 			if (nextKey !== lastRouteKey) handleRouteChange(hooks);
 
-			setupHistoryTitleEditing(); // re-bind on every DOM change (SPA lazy load)
+			setupHistoryTitles(); // restore titles + hint on every DOM change (SPA lazy load)
 
 			if (isFirstRender) {
 				isFirstRender = false;

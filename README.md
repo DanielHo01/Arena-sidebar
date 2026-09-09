@@ -223,11 +223,11 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 
 ### 自定义标题
 
-在 arena.ai 左侧历史会话列表，双击任意标题即可编辑：
+在 arena.ai 左侧历史会话列表，右键任意会话 → ✏️ Rename 即可编辑（与 ChatGPT / Claude 一致的菜单式重命名）：
 
 - 自动保存到 `chrome.storage.local`
 - 下次访问自动应用
-- 提示文字：`Double-click to rename`
+- 提示文字：`Right-click to rename`
 
 ### 拖动浮动按钮
 

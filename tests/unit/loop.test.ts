@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 	ensureArenaFolderEntry: vi.fn(),
 	toggleArenaSessionLibrarySection: vi.fn(),
 	setupHistoryContextMenu: vi.fn(),
-	setupHistoryTitleEditing: vi.fn(),
+	setupHistoryTitles: vi.fn(),
 	onStorageChanged: vi.fn((_key: string, _h: (change: unknown) => void) =>
 		vi.fn(),
 	),
@@ -55,7 +55,7 @@ vi.mock("../../src/ui/contextMenu", () => ({
 	setupHistoryContextMenu: mocks.setupHistoryContextMenu,
 }));
 vi.mock("../../src/historyTitles", () => ({
-	setupHistoryTitleEditing: mocks.setupHistoryTitleEditing,
+	setupHistoryTitles: mocks.setupHistoryTitles,
 }));
 vi.mock("../../src/platform/storage", () => ({
 	onStorageChanged: mocks.onStorageChanged,
@@ -197,7 +197,7 @@ describe("startDomLoop", () => {
 		await mutate();
 		vi.advanceTimersByTime(1600);
 
-		expect(mocks.setupHistoryTitleEditing).toHaveBeenCalledTimes(2);
+		expect(mocks.setupHistoryTitles).toHaveBeenCalledTimes(2);
 	});
 
 	it("does nothing while the user is dragging the FAB", async () => {

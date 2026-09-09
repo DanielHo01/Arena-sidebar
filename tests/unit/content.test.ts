@@ -79,7 +79,7 @@ const m = vi.hoisted(() => {
 		ensureArenaFolderEntry: vi.fn(),
 		toggleArenaSessionLibrarySection: vi.fn(),
 		setupHistoryContextMenu: vi.fn(() => vi.fn()),
-		setupHistoryTitleEditing: vi.fn(() => vi.fn()),
+		setupHistoryTitles: vi.fn(() => vi.fn()),
 		panel: { isOpen: false, isDragging: false },
 		fab: { position: null as { x: number; y: number } | null },
 	};
@@ -109,7 +109,7 @@ vi.mock("../../src/ui/contextMenu", () => ({
 	setupHistoryContextMenu: m.setupHistoryContextMenu,
 }));
 vi.mock("../../src/historyTitles", () => ({
-	setupHistoryTitleEditing: m.setupHistoryTitleEditing,
+	setupHistoryTitles: m.setupHistoryTitles,
 }));
 vi.mock("../../src/platform/route", () => ({
 	getSessionId: m.getSessionId,

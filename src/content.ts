@@ -14,7 +14,7 @@
 //   ui/panel.ts         — panel skeleton, round items, reconciliation
 //   ui/fab.ts          — FAB + drag
 //   ui/modals.ts       — export / summary modals
-//   historyTitles.ts    — /c/ link double-click rename
+//   historyTitles.ts    — restore /c/ link custom titles + rename hint
 console.log("[AI Sidebar] content script loaded, modules initializing...");
 // Wrap everything in an IIFE so top-level errors are caught and reported to the console.
 // Wires:
@@ -42,7 +42,7 @@ import {
 	toggleArenaSessionLibrarySection,
 } from "./ui/arenaSidebar";
 import { setupHistoryContextMenu } from "./ui/contextMenu";
-import { setupHistoryTitleEditing } from "./historyTitles";
+import { setupHistoryTitles } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
 import { storageGet } from "./platform/storage";
 import { loadHiddenRounds, setupHiddenRoundsSync } from "./rounds";
@@ -198,7 +198,7 @@ try {
 			registerDisposer(setupHiddenRoundsSync(initialSid, refreshUI));
 		}
 		registerDisposer(setupHistoryContextMenu()); // Phase 10A: right-click menu on history links
-		registerDisposer(setupHistoryTitleEditing()); // restore/rename custom history titles
+		registerDisposer(setupHistoryTitles()); // restore custom history titles + rename hint
 		// Phase 10A: inject 🗂 Session Library entry into Arena native sidebar
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),

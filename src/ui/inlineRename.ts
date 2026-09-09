@@ -1,4 +1,4 @@
-// ui/inlineRename.ts — the shared inline text editor behind both rename paths.
+// ui/inlineRename.ts — the inline text editor behind session rename.
 //
 // Renaming a session used to be implemented twice with different semantics:
 // historyTitles.ts hand-built an <input> for double-click rename, while
@@ -13,7 +13,9 @@
 //
 // Divergent copies of one interaction are the same failure mode that produced the
 // titleCache bug — two write paths for one operation, only one of which knew
-// about a piece of state. So there is one editor now, and both callers use it.
+// about a piece of state. So there is one editor now. Since #17 its only caller
+// is the right-click context menu — the double-click path that shared it was
+// removed — but the one-editor rule stands.
 
 import { h } from "./dom";
 
