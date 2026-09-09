@@ -9,11 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	HISTORY_LINK_SELECTOR,
 	SCROLL_CONTAINER_SELECTOR,
+	SIDEBAR_CONTAINER_SELECTOR,
+	SIDEBAR_MENU_SELECTOR,
+	SIDEBAR_SELECTOR,
 	SIDEBAR_WRAPPER_SELECTOR,
 	detectBattleMode,
 	findArenaSidebarWrapper,
 	inspectArenaQuickNav,
 	queryHistoryLinks,
+	queryScrollContainer,
 	resetQuickNavReport,
 	resolveQuickNavContainer,
 } from "../../src/platform/arenaDom";
@@ -38,20 +42,46 @@ describe("selectors", () => {
 		]);
 	});
 
-	it("SCROLL_CONTAINER_SELECTOR requires all three classes under main", () => {
+	it("SCROLL_CONTAINER_SELECTOR matches overscroll-none under main", () => {
 		document.body.innerHTML = `
-			<main><div><div class="h-full w-full overscroll-none">real</div></div></main>
-			<div><div class="h-full w-full overscroll-none">outside-main</div></div>`;
+			<main><div><div class="overscroll-none">real</div></div></main>
+			<div><div class="overscroll-none">outside-main</div></div>`;
 		const hit = document.querySelector(SCROLL_CONTAINER_SELECTOR);
 		expect(hit?.textContent).toBe("real");
 	});
 
-	it("SCROLL_CONTAINER_SELECTOR does not match a partial class list", () => {
-		document.body.innerHTML = `<main><div><div class="h-full w-full">x</div></div></main>`;
+	it("SCROLL_CONTAINER_SELECTOR matches a radix scroll viewport under main", () => {
+		document.body.innerHTML = `<main><div data-radix-scroll-area-viewport>vp</div></main>`;
+		const hit = document.querySelector(SCROLL_CONTAINER_SELECTOR);
+		expect(hit?.textContent).toBe("vp");
+	});
+
+	it("SCROLL_CONTAINER_SELECTOR does not match a scroller outside main", () => {
+		document.body.innerHTML = `<div class="overscroll-none">x</div>`;
 		expect(document.querySelector(SCROLL_CONTAINER_SELECTOR)).toBeNull();
 	});
 
-	it("SIDEBAR_WRAPPER_SELECTOR matches the class substring Arena uses", () => {
+	it("queryScrollContainer prefers the radix viewport over overscroll-none", () => {
+		document.body.innerHTML = `
+			<main>
+				<div class="overscroll-none">legacy</div>
+				<div data-radix-scroll-area-viewport>radix</div>
+			</main>`;
+		expect(queryScrollContainer()?.textContent).toBe("radix");
+	});
+
+	it("SIDEBAR_SELECTOR matches the shadcn data attribute", () => {
+		document.body.innerHTML = `<div data-sidebar="sidebar"></div>`;
+		expect(document.querySelector(SIDEBAR_SELECTOR)).not.toBeNull();
+	});
+
+	it("SIDEBAR_CONTAINER_SELECTOR and SIDEBAR_MENU_SELECTOR match the inner hooks", () => {
+		buildSidebar();
+		expect(document.querySelector(SIDEBAR_CONTAINER_SELECTOR)).not.toBeNull();
+		expect(document.querySelector(SIDEBAR_MENU_SELECTOR)).not.toBeNull();
+	});
+
+	it("SIDEBAR_WRAPPER_SELECTOR still matches the legacy class substring", () => {
 		document.body.innerHTML = `<aside class="foo sidebar-wrapper bar"></aside>`;
 		expect(document.querySelector(SIDEBAR_WRAPPER_SELECTOR)).not.toBeNull();
 	});
@@ -70,9 +100,23 @@ describe("queryHistoryLinks", () => {
 });
 
 describe("findArenaSidebarWrapper", () => {
-	it("finds the wrapper", () => {
+	it("finds the shadcn sidebar", () => {
 		buildSidebar();
+		expect(findArenaSidebarWrapper()?.getAttribute("data-sidebar")).toBe(
+			"sidebar",
+		);
+	});
+
+	it("falls back to the legacy class-substring wrapper", () => {
+		document.body.innerHTML = `<div class="group/sidebar-wrapper"></div>`;
 		expect(findArenaSidebarWrapper()?.className).toContain("sidebar-wrapper");
+	});
+
+	it("prefers the data-sidebar node when both exist", () => {
+		document.body.innerHTML = `
+			<div class="sidebar-wrapper" id="legacy"></div>
+			<div data-sidebar="sidebar" id="modern"></div>`;
+		expect(findArenaSidebarWrapper()?.id).toBe("modern");
 	});
 
 	it("returns null when Arena has not rendered it yet", () => {
@@ -80,69 +124,44 @@ describe("findArenaSidebarWrapper", () => {
 	});
 });
 
-// The index path children[0] -> [1] -> [0] -> [2] is the most fragile thing in
-// the codebase: it encodes Arena's DOM order, nothing semantic. A bare null
-// collapses six different breakages into one value, and all three call sites in
-// arenaSidebar.ts bail out silently on it -- so when Arena ships a redesign the
-// extension stops rendering and nothing says which assumption died.
-//
-// inspectArenaQuickNav names the failing level instead, and
-// resolveQuickNavContainer reports it. Both are pinned here because these are
-// the assertions that should fail when Arena changes its markup.
 describe("inspectArenaQuickNav", () => {
-	it("returns the element on the expected structure", () => {
+	it("returns the container on the expected structure", () => {
 		buildSidebar();
 		const probe = inspectArenaQuickNav();
 		expect(probe.ok).toBe(true);
-		if (probe.ok) expect(probe.el.dataset.slot).toBe("nav2");
+		if (probe.ok) expect(probe.el.dataset.slot).toBe("container");
 	});
 
-	it("names 'wrapper' when the sidebar wrapper is absent", () => {
-		expect(inspectArenaQuickNav()).toEqual({ ok: false, failedAt: "wrapper" });
+	it("names 'sidebar' when no sidebar is present", () => {
+		expect(inspectArenaQuickNav()).toEqual({ ok: false, failedAt: "sidebar" });
 	});
 
-	it("names 'floating' when the wrapper has no children", () => {
-		document.body.innerHTML = `<div class="sidebar-wrapper"></div>`;
+	it("names 'container' when the sidebar has no injection host", () => {
+		buildSidebar({ container: false });
 		expect(inspectArenaQuickNav()).toEqual({
 			ok: false,
-			failedAt: "floating",
+			failedAt: "container",
 		});
 	});
 
-	it("names 'bg-sidebar' when the floating container is too small", () => {
-		buildSidebar({ floatingChildren: 1 });
-		expect(inspectArenaQuickNav()).toEqual({
-			ok: false,
-			failedAt: "bg-sidebar",
-		});
-	});
+	it("falls back to the menu's parent when data-side=container is missing", () => {
+		const sidebar = document.createElement("div");
+		sidebar.setAttribute("data-sidebar", "sidebar");
+		const inner = document.createElement("div");
+		inner.id = "menu-parent";
+		const menu = document.createElement("ul");
+		menu.setAttribute("data-sidebar", "menu");
+		inner.appendChild(menu);
+		sidebar.appendChild(inner);
+		document.body.appendChild(sidebar);
 
-	it("names 'floating-root' when bg-sidebar is empty", () => {
-		buildSidebar({ bgChildren: 0 });
-		expect(inspectArenaQuickNav()).toEqual({
-			ok: false,
-			failedAt: "floating-root",
-		});
-	});
-
-	it("names 'quick-nav' when the nav slot is missing", () => {
-		buildSidebar({ rootChildren: 2 });
-		expect(inspectArenaQuickNav()).toEqual({
-			ok: false,
-			failedAt: "quick-nav",
-		});
-	});
-
-	it("names 'nav-tag' when slot 2 exists but is not a DIV", () => {
-		buildSidebar({ navTag: "span" });
-		expect(inspectArenaQuickNav()).toEqual({
-			ok: false,
-			failedAt: "nav-tag",
-		});
+		const probe = inspectArenaQuickNav();
+		expect(probe.ok).toBe(true);
+		if (probe.ok) expect(probe.el.id).toBe("menu-parent");
 	});
 
 	it("never throws on a hostile partial structure", () => {
-		document.body.innerHTML = `<div class="sidebar-wrapper"></div>`;
+		document.body.innerHTML = `<div data-sidebar="sidebar"></div>`;
 		expect(() => inspectArenaQuickNav()).not.toThrow();
 	});
 });
@@ -167,20 +186,19 @@ describe("resolveQuickNavContainer", () => {
 
 	it("returns the container and stays quiet on the expected structure", () => {
 		buildSidebar();
-		expect(resolveQuickNavContainer()?.dataset.slot).toBe("nav2");
+		expect(resolveQuickNavContainer()?.dataset.slot).toBe("container");
 		expect(warn).not.toHaveBeenCalled();
 	});
 
 	it("returns null and names the broken level when the structure is wrong", () => {
-		buildSidebar({ rootChildren: 2 });
+		buildSidebar({ container: false });
 		expect(resolveQuickNavContainer()).toBeNull();
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("quick-nav");
+		expect(String(warn.mock.calls[0]?.[0])).toContain("container");
 	});
 
 	it("reports a repeated identical failure only once", () => {
-		// The anti-spam property. The observer fires on every mutation.
-		buildSidebar({ rootChildren: 2 });
+		buildSidebar({ container: false });
 		resolveQuickNavContainer();
 		resolveQuickNavContainer();
 		resolveQuickNavContainer();
@@ -188,38 +206,35 @@ describe("resolveQuickNavContainer", () => {
 	});
 
 	it("reports again when a DIFFERENT level breaks", () => {
-		buildSidebar({ rootChildren: 2 });
+		buildSidebar({ container: false });
 		resolveQuickNavContainer();
 
 		document.body.innerHTML = "";
 		resolveQuickNavContainer();
 
 		expect(warn).toHaveBeenCalledTimes(2);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("quick-nav");
-		expect(String(warn.mock.calls[1]?.[0])).toContain("wrapper");
+		expect(String(warn.mock.calls[0]?.[0])).toContain("container");
+		expect(String(warn.mock.calls[1]?.[0])).toContain("sidebar");
 	});
 
 	it("re-latches after recovery, so a later break is reported", () => {
-		buildSidebar({ rootChildren: 2 });
+		buildSidebar({ container: false });
 		resolveQuickNavContainer();
 		expect(warn).toHaveBeenCalledTimes(1);
 
-		// Arena finishes rendering: the container returns and stays quiet.
 		document.body.innerHTML = "";
 		buildSidebar();
 		resolveQuickNavContainer();
 		expect(warn).toHaveBeenCalledTimes(1);
 
-		// A redesign lands later in the same page session.
 		document.body.innerHTML = "";
-		buildSidebar({ navTag: "span" });
+		buildSidebar({ container: false });
 		resolveQuickNavContainer();
 		expect(warn).toHaveBeenCalledTimes(2);
-		expect(String(warn.mock.calls[1]?.[0])).toContain("nav-tag");
+		expect(String(warn.mock.calls[1]?.[0])).toContain("container");
 	});
 
 	it("warns once, not once per observer tick, while the sidebar is absent", () => {
-		// The common page-load case: no wrapper at all, probed repeatedly.
 		resolveQuickNavContainer();
 		resolveQuickNavContainer();
 		expect(warn).toHaveBeenCalledTimes(1);

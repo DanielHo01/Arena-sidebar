@@ -8,19 +8,16 @@
 // bootstrap IIFE at module scope, so importing it has side effects.
 
 import { USER_MESSAGE_SELECTOR, ASSISTANT_MESSAGE_SELECTOR } from "../extract";
-import { SCROLL_CONTAINER_SELECTOR } from "../platform/arenaDom";
+import { queryScrollContainer } from "../platform/arenaDom";
 
 // ─── Pre-scroll: force-render all virtual-scrolled messages ────────────────────────────────
 
 export function findScrollContainer(): HTMLElement | null {
-	// The real scroll container is inside <main> with overscroll-none —
+	// Semantic candidates first (radix viewport / overscroll-none / legacy).
 	// Arena renders only ~8 messages in DOM and progressively loads more as user scrolls.
-	const c = document.querySelector(SCROLL_CONTAINER_SELECTOR);
-	if (
-		c &&
-		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
-	) {
-		return c as HTMLElement;
+	const c = queryScrollContainer();
+	if (c && c.scrollHeight > c.clientHeight * 3) {
+		return c;
 	}
 	// Fallback: largest scrollable element inside <main>
 	const main = document.querySelector("main");
@@ -44,25 +41,15 @@ let preScrollDone = false;
 let preScrollInterval: ReturnType<typeof setInterval> | null = null;
 let preScrollActive = false; // suppress observer work while forced-scrolling
 
-// Lightweight container lookup for preScroll retries — avoids the full <main>
-// fallback scan (querySelectorAll("*") + per-element scrollHeight forces reflow).
-function peekScrollContainer(): HTMLElement | null {
-	const c = document.querySelector(SCROLL_CONTAINER_SELECTOR);
-	if (
-		c &&
-		(c as HTMLElement).scrollHeight > (c as HTMLElement).clientHeight * 3
-	) {
-		return c as HTMLElement;
-	}
-	return null;
-}
-
 /** Poll briefly for Arena's scroll container, which React mounts late. */
 function retryUntilContainer(onDone: () => void): void {
 	console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
 	let retries = 0;
 	const retry = setInterval(() => {
-		const c = peekScrollContainer();
+		// #28: must use findScrollContainer (semantic selectors + largest-in-main
+		// fallback), not a class-only peek. Arena dropped overscroll-none; a
+		// peek that only knew the old class gave up with messages already in DOM.
+		const c = findScrollContainer();
 		if (!c && ++retries <= 10) return;
 		clearInterval(retry);
 		if (!c) {

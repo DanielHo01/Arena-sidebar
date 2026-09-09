@@ -11,23 +11,61 @@
 // means a redesign is one edit, and the tests here fail loudly and specifically
 // instead of the extension quietly rendering nothing.
 //
-// The quick-nav child-index path is inherently fragile — it depends on Arena's
-// DOM order, not on anything semantic. It is documented rather than hidden, and
-// the null-returning ladder below is what keeps a structure change from throwing
-// inside a MutationObserver callback.
+// #20: Arena's sidebar is now a shadcn Sidebar (data-sidebar / data-side), not
+// a 5-level child-index path under [class*="sidebar-wrapper"]. The probe below
+// uses those attributes; a named failure still beats a silent null.
 
 /** Anchor elements in Arena's history list. */
 export const HISTORY_LINK_SELECTOR = 'a[href*="/c/"]';
 
 /**
- * Arena's message scroll container. It virtualises: only ~8 messages are in the
- * DOM until you scroll, which is why features/prescroll.ts exists.
+ * Cheap candidates for Arena's message scroll container, preferred first.
+ * The list is tried in order by queryScrollContainer(); geometry (is it
+ * actually virtualised?) is features/prescroll.ts's job.
+ *
+ * #28: the old three-class AND
+ *   main > div > div[h-full][w-full][overscroll-none]
+ * no longer matches. Prefer shadcn ScrollArea, then any overscroll-none
+ * under main. The legacy path stays last so the e2e mock still works.
  */
-export const SCROLL_CONTAINER_SELECTOR =
-	'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]';
+export const SCROLL_CONTAINER_SELECTORS = [
+	"main [data-radix-scroll-area-viewport]",
+	'main [class*="overscroll-none"]',
+	'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
+] as const;
 
-/** The outermost element of Arena's sidebar. */
+/**
+ * Combined selector for "is there a chat scroller at all". querySelector
+ * with a comma list returns document order, not preference order — use
+ * queryScrollContainer() when the preferred node matters.
+ */
+export const SCROLL_CONTAINER_SELECTOR = SCROLL_CONTAINER_SELECTORS.join(", ");
+
+/** shadcn Sidebar root. Replaces [class*="sidebar-wrapper"]. */
+export const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
+
+/** History-list host inside the sidebar — Session Library injects here. */
+export const SIDEBAR_CONTAINER_SELECTOR = '[data-side="container"]';
+
+/** The <ul> of history links. */
+export const SIDEBAR_MENU_SELECTOR = 'ul[data-sidebar="menu"]';
+
+/**
+ * Legacy class-substring wrapper. Kept as a fallback finder so a partial
+ * Arena rollout that still paints the old class does not go fully dark.
+ */
 export const SIDEBAR_WRAPPER_SELECTOR = '[class*="sidebar-wrapper"]';
+
+/** First matching scroll-container candidate, or null. No geometry check. */
+export function queryScrollContainer(
+	root: ParentNode = document,
+): HTMLElement | null {
+	for (const sel of SCROLL_CONTAINER_SELECTORS) {
+		const el = root.querySelector<HTMLElement>(sel);
+		if (el) return el;
+	}
+	return null;
+}
 
 /** History links under `root`, defaulting to the whole document. */
 export function queryHistoryLinks(
@@ -39,67 +77,62 @@ export function queryHistoryLinks(
 }
 
 export function findArenaSidebarWrapper(): HTMLElement | null {
-	return document.querySelector<HTMLElement>(SIDEBAR_WRAPPER_SELECTOR);
+	return (
+		document.querySelector<HTMLElement>(SIDEBAR_SELECTOR) ??
+		document.querySelector<HTMLElement>(SIDEBAR_WRAPPER_SELECTOR)
+	);
 }
 
 /**
- * The level of the quick-nav descent that failed, named after what it was
- * supposed to find. Used to turn "the extension renders nothing" into a specific
- * statement about which Arena assumption broke.
+ * The semantic hook that failed. Two levels, not six: the child-index ladder
+ * is gone, so the only questions are "is there a sidebar?" and "is there a
+ * place to inject Session Library?".
  */
 export type QuickNavFailure =
-	| "wrapper" //      no [class*="sidebar-wrapper"] at all
-	| "floating" //     wrapper.children[0]
-	| "bg-sidebar" //   floating.children[1]
-	| "floating-root" // bgSidebar.children[0]
-	| "quick-nav" //    floatingRoot.children[2]
-	| "nav-tag"; //     slot 2 exists but is not a DIV
+	| "sidebar" //    no [data-sidebar=sidebar] and no legacy wrapper
+	| "container"; // sidebar found, but no [data-side=container] / menu parent
 
-/** Discriminated probe result: the container, or the level that broke. */
+/** Discriminated probe result: the injection container, or the level that broke. */
 export type QuickNavProbe =
 	{ ok: true; el: HTMLElement } | { ok: false; failedAt: QuickNavFailure };
 
 /**
- * Navigate to the quick-nav container (child 2) inside the floating sidebar —
- * where New Chat / Leaderboard / Search live.
+ * Resolve the node Session Library should inject into.
  *
- * Structure as of phase10a, with the failure name each level yields:
- *     [class*="sidebar-wrapper"]                   "wrapper"
- *       .children[0]   floating container          "floating"
- *         .children[1] bg-sidebar                  "bg-sidebar"
- *           .children[0] floating sidebar root     "floating-root"
- *             .children[2] quick-nav  <-- returned "quick-nav" / "nav-tag"
+ * Structure as of 2026-09-09 (Arena shadcn Sidebar):
+ *     [data-sidebar="sidebar"]                         "sidebar"
+ *       [data-side="container"]  <-- returned          "container"
+ *         div
+ *           ul[data-sidebar="menu"]
+ *           button
  *
- * Every level is checked, so any Arena change yields a named failure instead of
- * throwing inside a MutationObserver callback.
- *
- * Naming the level is the whole point. This index path is the single most
- * fragile thing in the codebase — it encodes Arena's DOM *order*, nothing
- * semantic — and a bare null told the call sites nothing about which assumption
- * died, so a redesign made the extension stop rendering silently.
+ * Fallbacks, in order: the menu's parent, the menu itself. Never walks
+ * children[n] — that is what #20 broke on.
  */
 export function inspectArenaQuickNav(): QuickNavProbe {
-	const wrapper = findArenaSidebarWrapper();
-	if (!wrapper) return { ok: false, failedAt: "wrapper" };
-	const floating = wrapper.children[0];
-	if (!floating) return { ok: false, failedAt: "floating" };
-	const bgSidebar = floating.children[1];
-	if (!bgSidebar) return { ok: false, failedAt: "bg-sidebar" };
-	const floatingRoot = bgSidebar.children[0];
-	if (!floatingRoot) return { ok: false, failedAt: "floating-root" };
-	const quickNav = floatingRoot.children[2];
-	if (!quickNav) return { ok: false, failedAt: "quick-nav" };
-	if (quickNav.tagName !== "DIV") return { ok: false, failedAt: "nav-tag" };
-	return { ok: true, el: quickNav as HTMLElement };
+	const sidebar = findArenaSidebarWrapper();
+	if (!sidebar) return { ok: false, failedAt: "sidebar" };
+
+	const container = sidebar.querySelector<HTMLElement>(
+		SIDEBAR_CONTAINER_SELECTOR,
+	);
+	if (container) return { ok: true, el: container };
+
+	const menu = sidebar.querySelector<HTMLElement>(SIDEBAR_MENU_SELECTOR);
+	if (menu?.parentElement instanceof HTMLElement) {
+		return { ok: true, el: menu.parentElement };
+	}
+	if (menu) return { ok: true, el: menu };
+
+	return { ok: false, failedAt: "container" };
 }
 
 // ── Edge-triggered failure reporting ──────────────────────────────────────────
 //
-// inspectArenaQuickNav can fail at six levels, and all three call sites in
+// inspectArenaQuickNav can fail at two levels, and all three call sites in
 // ui/arenaSidebar.ts bail out silently on a missing container. That is the right
 // behaviour at runtime — a MutationObserver callback must never throw — but it
-// means an Arena redesign makes the extension stop rendering with no signal at
-// all.
+// means an Arena redesign makes Session Library stop rendering with no signal.
 //
 // Reporting every null is not an option either: ensureArenaFolderEntry runs from
 // a MutationObserver, and during page load the sidebar legitimately does not
@@ -123,8 +156,9 @@ export function resetQuickNavReport(): void {
 }
 
 /**
- * Resolve the quick-nav container, reporting the first sighting of each distinct
- * failure level. Returns the container, or null when the traversal failed.
+ * Resolve the Session Library injection container, reporting the first sighting
+ * of each distinct failure level. Returns the container, or null when the
+ * traversal failed.
  */
 export function resolveQuickNavContainer(): HTMLElement | null {
 	const probe = inspectArenaQuickNav();
@@ -133,8 +167,8 @@ export function resolveQuickNavContainer(): HTMLElement | null {
 		lastQuickNavReport = current;
 		if (!probe.ok) {
 			console.warn(
-				`[AI Sidebar] Arena quick-nav container not found (failed at: ${probe.failedAt}). ` +
-					"Arena's sidebar markup may have changed; the child-index path in platform/arenaDom.ts needs updating.",
+				`[AI Sidebar] Arena sidebar container not found (failed at: ${probe.failedAt}). ` +
+					"Arena's sidebar markup may have changed; the semantic selectors in platform/arenaDom.ts need updating.",
 			);
 		}
 	}

@@ -369,6 +369,21 @@ describe("startDomLoop", () => {
 
 		expect(h.refreshUI).toHaveBeenCalledTimes(1);
 	});
+
+	it("re-extracts from the DOM on a settled mutation (#28)", async () => {
+		const h = hooks();
+		startDom(h);
+
+		await mutate();
+		vi.advanceTimersByTime(800);
+
+		expect(mocks.extractMessages).toHaveBeenCalled();
+		expect(mocks.refreshStore).toHaveBeenCalledWith({
+			dom: [],
+			bindAnchors: true,
+		});
+		expect(h.refreshUI).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("startPeriodicLoop", () => {

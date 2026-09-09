@@ -163,8 +163,12 @@
 		};
 
 		// ── 7. 其他已知假设 ───────────────────────────────────────────
-		out.scrollContainerFound = !!document.querySelector(
-			'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
+		out.scrollContainerFound = !!(
+			document.querySelector("main [data-radix-scroll-area-viewport]") ||
+			document.querySelector('main [class*="overscroll-none"]') ||
+			document.querySelector(
+				'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
+			)
 		);
 		out.historyLinkCount = document.querySelectorAll('a[href*="/c/"]').length;
 		out.elementCount = all.length;
