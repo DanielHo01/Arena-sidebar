@@ -47,7 +47,8 @@
 		out.buttons = buttons
 			.filter(
 				(b) =>
-					cap(b.textContent, 1) !== "" || (b.getAttribute("aria-label") || "") !== "",
+					cap(b.textContent, 1) !== "" ||
+					(b.getAttribute("aria-label") || "") !== "",
 			)
 			.slice(0, 120)
 			.map((b) => ({
@@ -76,9 +77,7 @@
 					? undefined // "tie" 太常见，不列命中文本
 					: uniq(
 							buttons
-								.filter((b) =>
-									p.test((b.textContent || "").toLowerCase()),
-								)
+								.filter((b) => p.test((b.textContent || "").toLowerCase()))
 								.map((b) => cap(b.textContent, 40)),
 						).slice(0, 5),
 		}));
@@ -99,7 +98,8 @@
 		const dataNames = new Set();
 		const dataStates = new Set();
 		const classKw = new Set();
-		const KW = /vote|battle|model|agent|message|turn|chat|tab|mode|column|versus|arena/i;
+		const KW =
+			/vote|battle|model|agent|message|turn|chat|tab|mode|column|versus|arena/i;
 		const all = document.getElementsByTagName("*");
 		const N = Math.min(all.length, 8000);
 		for (let i = 0; i < N; i++) {
@@ -196,7 +196,9 @@
 		if (!copied && navigator.clipboard?.writeText) {
 			navigator.clipboard
 				.writeText(json)
-				.then(() => console.log("%c✔ 已复制到剪贴板，直接粘贴即可", "color:green"))
+				.then(() =>
+					console.log("%c✔ 已复制到剪贴板，直接粘贴即可", "color:green"),
+				)
 				.catch(() =>
 					console.log(
 						"%c剪贴板被拦，手动三击选中上面的 JSON 复制",
