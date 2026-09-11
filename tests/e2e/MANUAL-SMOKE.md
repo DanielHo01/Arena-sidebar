@@ -51,6 +51,8 @@ npm run test:e2e
 - 37 句用户长消息不会被 `tooManyLines` 丢弃
 - 120px 用户/助手卡片仍会被提取
 - Sidebar root 和 injection container 分两次延迟挂载后，Session Library 仍会注入
+- 在真实页面之间切换后，Session Library 会显示已捕获的多个 session
+- 通过真实右键菜单和键盘输入改名，刷新后标题仍保留，并同步到 Session Library
 - 面板最终显示 3 个轮次、6 条消息
 
 ## 冒烟步骤

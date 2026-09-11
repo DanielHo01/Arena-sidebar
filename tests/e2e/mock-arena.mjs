@@ -134,7 +134,18 @@ setTimeout(function () {
 </script>`;
 }
 
-function page(title, body, extra = "") {
+function nativeSidebar() {
+	return `<aside data-sidebar="sidebar" data-side="root" class="group/sidebar-wrapper">
+<div data-side="container">
+<ul data-sidebar="menu">
+<li><a href="/c/e2e-alpha"><span>Alpha Conversation</span></a></li>
+<li><a href="/c/e2e-beta"><span>Beta Conversation</span></a></li>
+</ul>
+</div>
+</aside>`;
+}
+
+function page(title, body, extra = "", sidebar = "") {
 	return `<!doctype html>
 <html>
 <head>
@@ -144,6 +155,7 @@ function page(title, body, extra = "") {
 <script>console.log("[mock] arena page booted:", location.pathname);</script>
 </head>
 <body>
+${sidebar}
 <main>
 <div>
 <div class="h-full w-full overscroll-none" style="height: 85vh; overflow-y: auto;">
@@ -167,6 +179,7 @@ function sessionPage(sid) {
 		conv.title,
 		isIssue32 ? narrowConversation(conv.pairs) : conversation(conv.pairs),
 		isIssue32 ? lateSidebarScript() : "",
+		isIssue32 ? "" : nativeSidebar(),
 	);
 }
 
