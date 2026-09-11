@@ -22,7 +22,9 @@ const m = vi.hoisted(() => {
 		messages: [] as unknown[],
 		rounds: [] as unknown[],
 		loadFromStorage: vi.fn(
-			async (_sid: string): Promise<{ msgs: number; rounds: number } | null> => {
+			async (
+				_sid: string,
+			): Promise<{ msgs: number; rounds: number } | null> => {
 				order.push("loadFromStorage");
 				return null;
 			},
