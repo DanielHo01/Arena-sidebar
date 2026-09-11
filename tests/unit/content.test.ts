@@ -21,10 +21,14 @@ const m = vi.hoisted(() => {
 		sessionId: "",
 		messages: [] as unknown[],
 		rounds: [] as unknown[],
-		loadFromStorage: vi.fn(async (_sid: string) => {
-			order.push("loadFromStorage");
-			return null;
-		}),
+		loadFromStorage: vi.fn(
+			async (
+				_sid: string,
+			): Promise<{ msgs: number; rounds: number } | null> => {
+				order.push("loadFromStorage");
+				return null;
+			},
+		),
 		saveToStorage: vi.fn(async () => {
 			order.push("saveToStorage");
 		}),
@@ -56,6 +60,7 @@ const m = vi.hoisted(() => {
 		onStorageWriteFailed: vi.fn(() => vi.fn()),
 		showToast: vi.fn(),
 		updateStorageDot: vi.fn(),
+		loadEditOverlays: vi.fn(async () => []),
 		loadHiddenRounds: vi.fn(async () => {
 			order.push("loadHiddenRounds");
 		}),
@@ -129,6 +134,9 @@ vi.mock("../../src/platform/storage", () => ({
 vi.mock("../../src/ui/toast", () => ({ showToast: m.showToast }));
 vi.mock("../../src/ui/panel/skeleton", () => ({
 	updateStorageDot: m.updateStorageDot,
+}));
+vi.mock("../../src/editOverlays", () => ({
+	loadEditOverlays: m.loadEditOverlays,
 }));
 vi.mock("../../src/rounds", () => ({
 	loadHiddenRounds: m.loadHiddenRounds,
@@ -339,6 +347,26 @@ describe("content.ts assembler", () => {
 			const extract = m.order.indexOf("extractMessages");
 			expect(load).toBeGreaterThanOrEqual(0);
 			expect(extract).toBeGreaterThan(load);
+		});
+
+		it("loads edit overlays when the snapshot misses (evicted session)", async () => {
+			// m.store.loadFromStorage resolves null: every rebuild is a miss.
+			m.getSessionId.mockReturnValue("sess-1");
+			const h = await hooks();
+
+			await h.rebuildForCurrentRoute();
+
+			expect(m.loadEditOverlays).toHaveBeenCalledWith("sess-1");
+		});
+
+		it("skips overlay loading when the snapshot hits", async () => {
+			m.getSessionId.mockReturnValue("sess-1");
+			m.store.loadFromStorage.mockResolvedValueOnce({ msgs: 1, rounds: 1 });
+			const h = await hooks();
+
+			await h.rebuildForCurrentRoute();
+
+			expect(m.loadEditOverlays).not.toHaveBeenCalled();
 		});
 
 		it("restores hidden-round flags before extracting from the DOM", async () => {

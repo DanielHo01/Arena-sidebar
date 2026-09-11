@@ -16,10 +16,18 @@ import type {
 } from "./types";
 import { cachedElements, panel } from "./state";
 import {
+	evictOldestKeys,
 	evictOldestSnapshots,
 	storageGet,
 	storageSetDetailed,
 } from "./platform/storage";
+import {
+	EDIT_OVERLAY_PREFIX,
+	MAX_EDIT_KEYS,
+	applyOverlays,
+	getCachedOverlays,
+	persistLiveOverlays,
+} from "./editOverlays";
 import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
 import { computeRounds } from "./core/rounds";
 import { deletedMessageKeys, tombstoneKey } from "./rounds";
@@ -72,19 +80,25 @@ function emitStoreChange(): void {
 	}
 }
 
-// ─── Proactive snapshot trim ─────────────────────────────────────────────────────────
+// ─── Proactive storage trim ─────────────────────────────────────────────────────────
 //
-// saveToStorage runs on every settled mutation batch, so the count-cap scan
-// (a full get(null)) is throttled: at most one trim per minute per page load.
+// saveToStorage runs on every settled mutation batch, so the cap scans (each
+// a full get(null)) are throttled: at most one trim per minute per page load.
 
 let lastTrimAt = 0;
 const TRIM_THROTTLE_MS = 60_000;
 
-function scheduleSnapshotTrim(): void {
+function scheduleStorageTrim(): void {
 	const now = Date.now();
 	if (now - lastTrimAt < TRIM_THROTTLE_MS) return;
 	lastTrimAt = now;
 	void evictOldestSnapshots();
+	// Overlay mirrors are tiny and keyed per session: count-capped only.
+	void evictOldestKeys(
+		EDIT_OVERLAY_PREFIX,
+		MAX_EDIT_KEYS,
+		Number.POSITIVE_INFINITY,
+	);
 }
 
 // ─── Conversation store ─────────────────────────────────────────────────────────────
@@ -145,7 +159,7 @@ export const conversationStore = {
 		// Subscribers (folders' session index) are notified only after the write
 		// actually landed, preserving the old ordering guarantee.
 		emitStoreChange();
-		scheduleSnapshotTrim();
+		scheduleStorageTrim();
 		return true;
 	},
 
@@ -316,6 +330,15 @@ export function refreshStore(opts: {
 		});
 	}
 
+	// Edit overlays: re-attach user corrections mirrored to the side key.
+	// Loaded on snapshot-miss rebuilds (survives snapshot eviction) and
+	// idempotent when the snapshot already carried them — live edits win.
+	// Runs before rebuildRounds so titles follow corrected content.
+	applyOverlays(
+		conversationStore.messages,
+		getCachedOverlays(conversationStore.sessionId),
+	);
+
 	// Sprint 3.2: always bind anchors to keep DOM ↔ store in sync (even if no new messages).
 	if (bindAnchors) bindDomAnchors();
 
@@ -355,6 +378,12 @@ export function editMessageContent(
 	msg.editedAt = Date.now();
 	rebuildRounds();
 	void conversationStore.saveToStorage();
+	// Mirror to the side key: snapshots are LRU-evicted, overlays are not —
+	// without this an evicted session loses the user's corrections for good.
+	void persistLiveOverlays(
+		conversationStore.sessionId,
+		conversationStore.messages,
+	);
 	// renderKey compares round ids, which an edit does not move — without this
 	// the fast path would swallow the re-render and the row would show stale
 	// text until something else changed.
