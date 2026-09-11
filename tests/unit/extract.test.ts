@@ -17,10 +17,10 @@ import {
 } from "../../src/extract";
 import { cachedElements } from "../../src/state";
 
-// jsdom reports every box as 0x0. extract.ts rejects elements narrower than
-// 200px, so without this stub every message would be filtered out and the
-// module would look "working" while testing nothing. (Worth noting as a design
-// smell: the width gate couples pure extraction to layout.)
+// jsdom reports every box as 0x0. The production extractor treats zero as
+// "layout not measured yet", but use a real box here so the width guard itself
+// is exercised. (The width gate remains a last-resort chrome filter, not a
+// requirement for extraction.)
 const BOX = {
 	width: 600,
 	height: 120,
@@ -157,6 +157,35 @@ describe("extractMessages", () => {
 		document.body.innerHTML = `<main>${user("a real question")}</main>`;
 		expect(extractMessages()).toHaveLength(1);
 		expect(getLastExtractStats().kept).toBe(1);
+		expect(getLastExtractStats().dropped.tooNarrow).toBe(0);
+	});
+
+	it("keeps a normal long prompt and a narrow 120px card (#32)", () => {
+		const longPrompt = Array.from(
+			{ length: 37 },
+			(_, i) => `sentence ${i + 1}`,
+		).join(". ");
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+			...BOX,
+			width: 120,
+			right: 120,
+		} as DOMRect);
+		document.body.innerHTML = `<main>${user(longPrompt)}${assistant(LONG)}</main>`;
+
+		expect(extractMessages()).toHaveLength(2);
+		expect(getLastExtractStats().dropped.tooManyLines).toBe(0);
+		expect(getLastExtractStats().dropped.tooNarrow).toBe(0);
+	});
+
+	it("does not treat an unmeasured zero-width box as narrow", () => {
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+			...BOX,
+			width: 0,
+			right: 0,
+		} as DOMRect);
+		document.body.innerHTML = `<main>${user("a real question")}</main>`;
+
+		expect(extractMessages()).toHaveLength(1);
 		expect(getLastExtractStats().dropped.tooNarrow).toBe(0);
 	});
 

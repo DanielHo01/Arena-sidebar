@@ -196,11 +196,19 @@ function dedupeByRoot(elements: Element[]): Element[] {
 const MIN_USER_LEN = 3;
 const MIN_ASSISTANT_LEN = 50;
 
+// Keep these guards deliberately permissive. The selectors already identify
+// Arena's message surfaces; these are only a last line of defence against
+// obvious layout chrome. The previous values (30 sentences / 200px) rejected
+// ordinary long prompts and narrow assistant cards on real pages (#32).
+const MAX_USER_SENTENCES = 100;
+const MIN_MESSAGE_WIDTH = 100;
+
 /**
  * Classify a selector hit. Returns a drop reason, or null when it looks like a
  * real message. Width > 1000 used to reject user bubbles (#28): on a wide
  * monitor Arena's cards easily exceed that, so every user message vanished
- * even though the selector hit. The lower bound stays — it filters chrome.
+ * even though the selector hit. The lower bound is intentionally only 100px —
+ * it filters tiny chrome without rejecting a real narrow message bubble.
  */
 function classifyHit(
 	el: Element,
@@ -216,11 +224,12 @@ function classifyHit(
 		const lines = text
 			.split(/[。！？.!?\n]/)
 			.filter((s) => s.trim().length > 0);
-		if (lines.length > 30) return "tooManyLines";
+		if (lines.length > MAX_USER_SENTENCES) return "tooManyLines";
 	}
 	// P0 #9 — getBoundingClientRect is last; it forces layout so keep it after cheap filters.
 	const rect = (el as HTMLElement).getBoundingClientRect?.();
-	if (rect && rect.width < 200) return "tooNarrow";
+	if (rect && rect.width > 0 && rect.width < MIN_MESSAGE_WIDTH)
+		return "tooNarrow";
 	return null;
 }
 
