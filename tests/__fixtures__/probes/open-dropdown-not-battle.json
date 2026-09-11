@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "id": "open-dropdown-not-battle",
+  "source": "false-positive guard for #21: data-state=open is not enough",
+  "capturedAt": "2026-09-09",
+  "page": "direct",
+  "liveNotes": "An account menu is also button[data-state=open]. Without a Battle/对战/盲测 label, detectBattleMode must stay false.",
+  "expect": {
+    "battle": false,
+    "sidebar": "ok",
+    "scrollFound": true
+  },
+  "dom": {
+    "sidebar": "shadcn",
+    "scroll": "overscroll",
+    "modeButtons": [{ "text": "Account", "dataState": "open" }]
+  }
+}

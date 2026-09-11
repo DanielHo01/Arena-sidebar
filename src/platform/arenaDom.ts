@@ -1,60 +1,39 @@
-// platform/arenaDom.ts — every selector and DOM probe that encodes knowledge of
-// arena.ai's markup, in one place.
+// platform/arenaDom.ts — probes and traversal over arena.ai's markup.
 //
-// Before this module the same knowledge was scattered:
-//   'a[href*="/c/"]'                  folders.ts, historyTitles.ts x2
-//   the overscroll-none container     features/prescroll.ts
-//   '[class*="sidebar-wrapper"]'      folders.ts
-//   children[0] -> [1] -> [0] -> [2]  folders.ts (quick-nav)
-//
-// These are the lines that break when Arena ships a redesign. Centralising them
-// means a redesign is one edit, and the tests here fail loudly and specifically
-// instead of the extension quietly rendering nothing.
-//
-// #20: Arena's sidebar is now a shadcn Sidebar (data-sidebar / data-side), not
-// a 5-level child-index path under [class*="sidebar-wrapper"]. The probe below
-// uses those attributes; a named failure still beats a silent null.
+// Selectors live in arenaContract.ts (one edit when Arena redesigns; the
+// console probe is generated from the same file). This module is the
+// runtime: scroll/history queries, Session Library injection, Battle
+// detection. #20: shadcn Sidebar (data-sidebar / data-side), not a 5-level
+// child-index path. A named failure still beats a silent null.
 
-/** Anchor elements in Arena's history list. */
-export const HISTORY_LINK_SELECTOR = 'a[href*="/c/"]';
+import {
+	ACTIVE_MODE_SELECTOR,
+	BATTLE_MODE_LABEL,
+	BATTLE_VOTE_PATTERNS,
+	BATTLE_VOTE_QUORUM,
+	CONTROL_SELECTOR,
+	HISTORY_LINK_SELECTOR,
+	SCROLL_CONTAINER_SELECTORS,
+	SIDEBAR_CONTAINER_SELECTOR,
+	SIDEBAR_MENU_SELECTOR,
+	SIDEBAR_SELECTOR,
+	SIDEBAR_WRAPPER_SELECTOR,
+} from "./arenaContract";
 
-/**
- * Cheap candidates for Arena's message scroll container, preferred first.
- * The list is tried in order by queryScrollContainer(); geometry (is it
- * actually virtualised?) is features/prescroll.ts's job.
- *
- * #28: the old three-class AND
- *   main > div > div[h-full][w-full][overscroll-none]
- * no longer matches. Prefer shadcn ScrollArea, then any overscroll-none
- * under main. The legacy path stays last so the e2e mock still works.
- */
-export const SCROLL_CONTAINER_SELECTORS = [
-	"main [data-radix-scroll-area-viewport]",
-	'main [class*="overscroll-none"]',
-	'main > div > div[class*="h-full"][class*="w-full"][class*="overscroll-none"]',
-] as const;
-
-/**
- * Combined selector for "is there a chat scroller at all". querySelector
- * with a comma list returns document order, not preference order — use
- * queryScrollContainer() when the preferred node matters.
- */
-export const SCROLL_CONTAINER_SELECTOR = SCROLL_CONTAINER_SELECTORS.join(", ");
-
-/** shadcn Sidebar root. Replaces [class*="sidebar-wrapper"]. */
-export const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
-
-/** History-list host inside the sidebar — Session Library injects here. */
-export const SIDEBAR_CONTAINER_SELECTOR = '[data-side="container"]';
-
-/** The <ul> of history links. */
-export const SIDEBAR_MENU_SELECTOR = 'ul[data-sidebar="menu"]';
-
-/**
- * Legacy class-substring wrapper. Kept as a fallback finder so a partial
- * Arena rollout that still paints the old class does not go fully dark.
- */
-export const SIDEBAR_WRAPPER_SELECTOR = '[class*="sidebar-wrapper"]';
+export {
+	ACTIVE_MODE_SELECTOR,
+	BATTLE_MODE_LABEL,
+	BATTLE_VOTE_PATTERNS,
+	BATTLE_VOTE_QUORUM,
+	CONTROL_SELECTOR,
+	HISTORY_LINK_SELECTOR,
+	SCROLL_CONTAINER_SELECTOR,
+	SCROLL_CONTAINER_SELECTORS,
+	SIDEBAR_CONTAINER_SELECTOR,
+	SIDEBAR_MENU_SELECTOR,
+	SIDEBAR_SELECTOR,
+	SIDEBAR_WRAPPER_SELECTOR,
+} from "./arenaContract";
 
 /** First matching scroll-container candidate, or null. No geometry check. */
 export function queryScrollContainer(
@@ -201,29 +180,12 @@ export function resolveQuickNavContainer(): HTMLElement | null {
 // double-count. "都好" is a prefix of "都不好"; the lookahead keeps them
 // as separate votes.
 
-const ACTIVE_MODE_SELECTOR = [
-	'[role="tab"][aria-selected="true"]',
-	'[role="tab"][data-state="active"]',
-	'button[aria-pressed="true"]',
-	'button[data-state="active"]',
-	'button[data-state="open"]',
-].join(", ");
-
-const BATTLE_MODE_LABEL = /battle|对战|盲测/i;
-
-const BATTLE_VOTE_PATTERNS: RegExp[] = [
-	/a is better|a\s*更好/,
-	/b is better|b\s*更好/,
-	/\btie\b|都好(?!不)/,
-	/both bad|都不好/,
-];
-const BATTLE_VOTE_QUORUM = 3;
-
 /**
  * True when the page looks like an arena.ai battle (blind side-by-side)
  * conversation: the Battle Mode control is active, or a quorum of the battle
  * vote labels is present. Scoped to `root` for tests; production passes
- * nothing and scans the document.
+ * nothing and scans the document. Patterns live in arenaContract.ts so the
+ * console probe cannot drift.
  */
 export function detectBattleMode(root: ParentNode = document): boolean {
 	const tabs = root.querySelectorAll(ACTIVE_MODE_SELECTOR);
@@ -231,7 +193,7 @@ export function detectBattleMode(root: ParentNode = document): boolean {
 		if (BATTLE_MODE_LABEL.test(tab.textContent || "")) return true;
 	}
 	const seen = new Set<number>();
-	const buttons = root.querySelectorAll('button, [role="button"]');
+	const buttons = root.querySelectorAll(CONTROL_SELECTOR);
 	for (const btn of buttons) {
 		const text = (btn.textContent || "").toLowerCase();
 		BATTLE_VOTE_PATTERNS.forEach((pattern, i) => {

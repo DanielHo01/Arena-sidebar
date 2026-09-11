@@ -5,6 +5,12 @@
 
 import type { SidebarMessage } from "./types";
 import { cachedElements } from "./state";
+import {
+	ASSISTANT_MESSAGE_SELECTOR,
+	USER_MESSAGE_SELECTOR,
+} from "./platform/arenaContract";
+
+export { ASSISTANT_MESSAGE_SELECTOR, USER_MESSAGE_SELECTOR };
 
 // ─── DOM change detection ─────────────────────────────────────────────────────────────
 // Avoid re-extracting when DOM hasn't changed since last extract.
@@ -118,13 +124,6 @@ function domChanged(
 	lastExtractSig = sig;
 	return true;
 }
-
-// ─── Selectors (arena.ai specific — split from main module for easy tweaking) ─────
-
-export const USER_MESSAGE_SELECTOR =
-	'main [class*="bg-surface-raised"][class*="rounded-lg"]:not([class*="w-4"]):not([class*="inline-flex"])';
-export const ASSISTANT_MESSAGE_SELECTOR =
-	'main [class*="bg-surface-primary"][class*="flex-col"][class*="overflow-hidden"]';
 
 // ─── Stable ID generation ─────────────────────────────────────────────────────────
 

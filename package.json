@@ -13,7 +13,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "node tests/e2e/run.mjs"
+    "test:e2e": "node tests/e2e/run.mjs",
+    "gen:probe": "tsx scripts/gen-probe.ts",
+    "probe:check": "tsx scripts/gen-probe.ts --check"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
