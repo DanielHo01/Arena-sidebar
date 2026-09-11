@@ -45,6 +45,16 @@ let lastRouteKey = "";
 let isFirstRender = true;
 
 let observer: MutationObserver | null = null;
+/**
+ * Separate observer for Arena's native sidebar. The chat observer intentionally
+ * watches only the message scroller, but Arena renders the sidebar elsewhere
+ * and often mounts it after the content script's first probe (#32).
+ */
+let sidebarObserver: MutationObserver | null = null;
+
+const ARENA_SIDEBAR_SELECTOR =
+	'[data-sidebar="sidebar"], [class*="sidebar-wrapper"]';
+const ARENA_FOLDER_ENTRY_SELECTOR = "[data-ai-sidebar-folder-entry]";
 
 /**
  * Cross-tab hidden-rounds subscription for the session being viewed. The key
@@ -128,6 +138,7 @@ function extractAndRefresh(hooks: LoopHooks, bindAnchors: boolean): void {
  */
 export function startDomLoop(hooks: LoopHooks): Disposer {
 	if (observer) observer.disconnect();
+	if (sidebarObserver) sidebarObserver.disconnect();
 	observer = new MutationObserver(() => {
 		if (panel.isDragging) return;
 		if (timers.debounce !== null) clearTimeout(timers.debounce);
@@ -161,10 +172,33 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 	const target =
 		chatContainer ?? document.querySelector("main") ?? document.body;
 	observer.observe(target, { childList: true, subtree: true });
+
+	// Arena's native sidebar is not necessarily inside the chat scroller. Keep a
+	// small, targeted watcher for its late mount/replacement instead of widening
+	// the expensive extraction observer to the whole document. The existence
+	// checks avoid calling the probe for every chat mutation; once the entry has
+	// been injected, a native-sidebar replacement removes it and re-arms this
+	// path naturally.
+	const sidebarTarget = document.body ?? document.documentElement;
+	if (sidebarTarget) {
+		sidebarObserver = new MutationObserver(() => {
+			const hasSidebar = document.querySelector(ARENA_SIDEBAR_SELECTOR);
+			const hasEntry = document.querySelector(ARENA_FOLDER_ENTRY_SELECTOR);
+			if (hasSidebar && !hasEntry) {
+				ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection());
+			}
+		});
+		sidebarObserver.observe(sidebarTarget, { childList: true, subtree: true });
+	}
+
 	return () => {
 		if (observer) {
 			observer.disconnect();
 			observer = null;
+		}
+		if (sidebarObserver) {
+			sidebarObserver.disconnect();
+			sidebarObserver = null;
 		}
 		hiddenSync?.();
 		hiddenSync = null;

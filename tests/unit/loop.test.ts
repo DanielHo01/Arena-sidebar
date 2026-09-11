@@ -370,6 +370,20 @@ describe("startDomLoop", () => {
 		expect(h.refreshUI).toHaveBeenCalledTimes(1);
 	});
 
+	it("retries Session Library injection when Arena mounts its sidebar late (#32)", async () => {
+		const h = hooks();
+		startDom(h);
+		expect(mocks.ensureArenaFolderEntry).not.toHaveBeenCalled();
+
+		const sidebar = document.createElement("aside");
+		sidebar.setAttribute("data-sidebar", "sidebar");
+		document.body.appendChild(sidebar);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(mocks.ensureArenaFolderEntry).toHaveBeenCalledTimes(1);
+	});
+
 	it("re-extracts from the DOM on a settled mutation (#28)", async () => {
 		const h = hooks();
 		startDom(h);

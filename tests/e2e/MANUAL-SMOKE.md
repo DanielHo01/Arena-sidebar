@@ -24,6 +24,37 @@
 `FAB=false` 在 closed shadow 下是正常误报，不要当扩展没注入。
 详情见 `tests/__fixtures__/probes/README.md`。
 
+## 自动化页面执行测试
+
+本项目也提供了一个本地 Arena 页面服务器和真实 Chromium 执行器。它不是 jsdom
+单元测试：会加载真实 `dist/` bundle，执行真实 content script、MutationObserver、
+Shadow DOM、滚动、输入事件和 storage 流程。
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+如果环境没有 Chrome/Edge，可以在网络受限的沙箱中先执行：
+
+```bash
+node tests/e2e/setup-browser.mjs
+E2E_MODE=script \\
+E2E_BROWSER=/tmp/chromium \\
+LD_LIBRARY_PATH=/tmp/arena-sidebar-e2e-browser/al2023/lib \\
+npm run test:e2e
+```
+
+`E2E_MODE=auto` 默认优先尝试 MV3 extension mode；如果浏览器没有成功加载扩展，
+会自动回退到 script mode。Issue #32 的页面场景 `/c/e2e-issue32` 会验证：
+
+- 37 句用户长消息不会被 `tooManyLines` 丢弃
+- 120px 用户/助手卡片仍会被提取
+- Sidebar root 和 injection container 分两次延迟挂载后，Session Library 仍会注入
+- 在真实页面之间切换后，Session Library 会显示已捕获的多个 session
+- 通过真实右键菜单和键盘输入改名，刷新后标题仍保留，并同步到 Session Library
+- 面板最终显示 3 个轮次、6 条消息
+
 ## 冒烟步骤
 
 ### ① 隐藏 → 刷新 → 恢复(持久化 + 恢复模式)

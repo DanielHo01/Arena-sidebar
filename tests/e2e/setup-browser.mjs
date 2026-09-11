@@ -20,6 +20,9 @@ function run(cmd, cwd) {
 }
 
 mkdirSync(ROOT, { recursive: true });
+// tar refuses a missing cwd on current npm tar releases. Create the target
+// before extraction so this bootstrap works in a clean sandbox as documented.
+mkdirSync(LIB_DIR, { recursive: true });
 if (!existsSync(path.join(ROOT, "package.json"))) {
 	writeFileSync(path.join(ROOT, "package.json"), '{"private":true}\n');
 }

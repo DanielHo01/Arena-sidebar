@@ -134,6 +134,15 @@ const CHROME_STORAGE_STUB = `
           if (bc) bc.postMessage(changes);
           notify(changes);
         },
+        async getBytesInUse(keys) {
+          const all = readAll();
+          const selected = keys === null || keys === undefined
+            ? all
+            : Object.fromEntries((Array.isArray(keys) ? keys : [keys])
+                .filter((k) => k in all)
+                .map((k) => [k, all[k]]));
+          return new Blob([JSON.stringify(selected)]).size;
+        },
       },
       onChanged: {
         addListener(l) { listeners.add(l); },
@@ -435,6 +444,18 @@ class Agent {
 		});
 	}
 
+	/** Elements with an exact attribute value, including light-DOM controls. */
+	async byAttr(name, value) {
+		return (await this.elements()).filter((el) => el.attrs[name] === value);
+	}
+
+	/** Elements with a given tag name, useful for real form controls. */
+	async byNodeName(name) {
+		return (await this.elements()).filter(
+			(el) => el.name.toLowerCase() === name.toLowerCase(),
+		);
+	}
+
 	/** The single element matching, or null. Throws if more than one. */
 	async one(...tokens) {
 		const found = await this.byClass(...tokens);
@@ -464,6 +485,40 @@ class Agent {
 		}
 	}
 
+	/** Open a native context menu with a real right-button input sequence. */
+	async contextMenu(el) {
+		const { model } = await this.page.send("DOM.getBoxModel", {
+			nodeId: el.nodeId,
+		});
+		const b = model.border;
+		const x = (b[0] + b[4]) / 2;
+		const y = (b[1] + b[5]) / 2;
+		for (const type of ["mousePressed", "mouseReleased"]) {
+			await this.page.send("Input.dispatchMouseEvent", {
+				type,
+				x,
+				y,
+				button: "right",
+				clickCount: 1,
+			});
+		}
+	}
+
+	/** Send a real key press to the focused control. */
+	async pressKey(key) {
+		const keyCodes = { Enter: 13, Escape: 27 };
+		const code = keyCodes[key] ?? 0;
+		for (const type of ["keyDown", "keyUp"]) {
+			await this.page.send("Input.dispatchKeyEvent", {
+				type,
+				key,
+				code: key,
+				windowsVirtualKeyCode: code,
+				nativeVirtualKeyCode: code,
+			});
+		}
+	}
+
 	/** Move the mouse over an element (needed to reveal hover-only UI). */
 	async hover(el) {
 		const { model } = await this.page.send("DOM.getBoxModel", {
@@ -477,9 +532,14 @@ class Agent {
 		});
 	}
 
-	/** Focus by clicking, then type as real text input. */
+	/** Focus by clicking, then type through Chromium's input channel. */
 	async type(el, text) {
 		await this.click(el);
+		await this.page.send("Input.insertText", { text });
+	}
+
+	/** Type into a control that the page has already focused. */
+	async typeFocused(text) {
 		await this.page.send("Input.insertText", { text });
 	}
 
@@ -543,6 +603,32 @@ async function itemByText(agent, needle) {
 			`${agent.label}: expected exactly one .item containing "${needle}", got ${found.length}`,
 		);
 	return found[0];
+}
+
+function hasAncestorAttr(el, name, value) {
+	let current = el.parent;
+	while (current) {
+		if (current.attrs[name] === value) return true;
+		current = current.parent;
+	}
+	return false;
+}
+
+async function nativeHistoryLink(agent, href) {
+	const found = (await agent.byAttr("href", href)).filter((el) =>
+		hasAncestorAttr(el, "data-sidebar", "menu"),
+	);
+	if (found.length !== 1)
+		throw new Error(
+			`${agent.label}: expected one native history link ${href}, got ${found.length}`,
+		);
+	return found[0];
+}
+
+async function visibleSessionTitles(page) {
+	return page.evaluate(
+		"JSON.stringify(Array.from(document.querySelectorAll('[data-ai-sidebar-arena-library-section] .asl-session-item')).filter(function(el){ var section = el.closest('[data-ai-sidebar-arena-library-section]'); return section && getComputedStyle(section).display !== 'none'; }).map(function(el){ return { href: el.getAttribute('href'), title: (el.querySelector('span') || el).textContent.trim() }; }))",
+	);
 }
 
 async function visibilityButton(agent, itemEl) {
@@ -712,6 +798,145 @@ step(
 		await a.waitFor("search narrows to the risotto round", async () => {
 			const rows = await items(a);
 			return rows.length === 1 && rows[0].text.toLowerCase().includes("risotto")
+				? true
+				: null;
+		});
+	},
+);
+
+step(
+	"Session Library loads sessions captured while navigating between real pages",
+	async (ctx) => {
+		const a = ctx.alpha;
+		const entry = await a.waitFor("Session Library entry", async () => {
+			const found = await a.byAttr("data-ai-sidebar-folder-entry", "1");
+			return found.length === 1 ? found[0] : null;
+		});
+		await a.click(entry);
+		await a.waitFor("two captured session rows", async () => {
+			const rows = JSON.parse(await visibleSessionTitles(a.page));
+			const ids = new Set(rows.map((row) => row.href));
+			return ids.has("/c/e2e-alpha") && ids.has("/c/e2e-beta") ? true : null;
+		});
+		const rows = JSON.parse(await visibleSessionTitles(a.page));
+		if (rows.length !== 2)
+			throw new Error(`expected 2 captured sessions, saw ${rows.length}`);
+	},
+);
+
+step(
+	"real Chromium rename persists through storage and a page reload",
+	async (ctx) => {
+		const a = ctx.alpha;
+		const entry = (await a.byAttr("data-ai-sidebar-folder-entry", "1"))[0];
+		if (!entry) throw new Error("Session Library entry not found");
+		await a.click(entry); // close the library before opening the native history menu
+
+		const link = await nativeHistoryLink(a, "/c/e2e-alpha");
+		await a.contextMenu(link);
+		const menu = await a.waitFor("native rename menu", async () => {
+			const menus = await a.byClass("ai-sidebar-ctx");
+			return menus.length === 1 ? menus[0] : null;
+		});
+		const rename = (await a.byClass("ai-sidebar-ctx-item")).find((item) =>
+			item.text.includes("Rename"),
+		);
+		if (!rename) throw new Error("Rename menu item not found");
+		await a.click(rename);
+
+		await a.waitFor("inline rename input", async () => {
+			const fields = (await a.byNodeName("input")).filter((field) =>
+				hasAncestorAttr(field, "href", "/c/e2e-alpha"),
+			);
+			return fields.length === 1 ? fields[0] : null;
+		});
+		await a.typeFocused("Renamed Alpha Session");
+		await a.pressKey("Enter");
+		const renamed = await a.poll(async () => {
+			const text = await a.page.evaluate(
+				"(function(){ var el = document.querySelector('ul[data-sidebar=\"menu\"] a[href=\"/c/e2e-alpha\"]'); return el ? el.textContent.trim() : ''; })()",
+			);
+			return text === "Renamed Alpha Session" ? true : null;
+		}, 3000);
+		if (!renamed) {
+			const state = await a.page.evaluate(
+				"(function(){ var el = document.querySelector('ul[data-sidebar=\"menu\"] a[href=\"/c/e2e-alpha\"]'); var input = el && el.querySelector('input'); return JSON.stringify({ link: el ? el.textContent : null, input: input ? input.value : null, active: document.activeElement && document.activeElement.tagName }); })()",
+			);
+			throw new Error(`rename did not commit: ${state}`);
+		}
+
+		await a.page.reload();
+		await assertPanelRounds(a, 4);
+		await a.waitFor("renamed title after reload", async () => {
+			const text = await a.page.evaluate(
+				"(function(){ var el = document.querySelector('ul[data-sidebar=\"menu\"] a[href=\"/c/e2e-alpha\"]'); return el ? el.textContent.trim() : ''; })()",
+			);
+			return text === "Renamed Alpha Session" ? true : null;
+		});
+		void menu;
+	},
+);
+
+step(
+	"renamed session is pulled into the real Session Library after reload",
+	async (ctx) => {
+		const a = ctx.alpha;
+		const entry = await a.waitFor(
+			"reloaded Session Library entry",
+			async () => {
+				const found = await a.byAttr("data-ai-sidebar-folder-entry", "1");
+				return found.length === 1 ? found[0] : null;
+			},
+		);
+		await a.click(entry);
+		await a.waitFor("renamed Session Library row", async () => {
+			const rows = JSON.parse(await visibleSessionTitles(a.page));
+			return rows.some(
+				(row) =>
+					row.href === "/c/e2e-alpha" && row.title === "Renamed Alpha Session",
+			)
+				? true
+				: null;
+		});
+	},
+);
+
+step(
+	"Issue #32: long prompts and 120px cards survive real browser extraction",
+	async (ctx) => {
+		const a = ctx.alpha;
+		await ctx.goto(a, `${ctx.url}/c/e2e-issue32`);
+		await assertPanelRounds(a, 3);
+
+		await a.waitFor("six narrow DOM messages", async () => {
+			const raw = await a.page.evaluate(
+				"JSON.stringify((function(){ var els = Array.from(document.querySelectorAll(\"main [class*='bg-surface-raised'], main [class*='bg-surface-primary']\")); return { count: els.length, widths: els.map(function(el){ return Math.round(el.getBoundingClientRect().width); }) }; })())",
+			);
+			const snapshot = JSON.parse(raw);
+			return snapshot.count === 6 &&
+				snapshot.widths.every((width) => width >= 100 && width < 200)
+				? true
+				: null;
+		});
+		const msgs = await hostAttr(a.page, "data-ai-sidebar-msgs");
+		if (msgs !== "6")
+			throw new Error(`expected six extracted messages, host reports ${msgs}`);
+	},
+);
+
+step(
+	"Issue #32: Session Library injects after the sidebar and container mount separately",
+	async (ctx) => {
+		const a = ctx.alpha;
+		await a.waitFor("late Session Library entry", async () => {
+			const raw = await a.page.evaluate(
+				"JSON.stringify({ sidebar: !!document.querySelector('[data-sidebar=\"sidebar\"]'), container: !!document.querySelector('[data-sidebar=\"sidebar\"] [data-side=\"container\"]'), entry: !!document.querySelector('[data-ai-sidebar-folder-entry]'), label: (document.querySelector('[data-ai-sidebar-folder-entry]') || {}).textContent || '' })",
+			);
+			const snapshot = JSON.parse(raw);
+			return snapshot.sidebar &&
+				snapshot.container &&
+				snapshot.entry &&
+				snapshot.label.includes("Session Library")
 				? true
 				: null;
 		});
