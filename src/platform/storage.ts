@@ -278,18 +278,19 @@ function snapshotBytes(value: unknown): number {
 }
 
 /**
- * Delete the oldest session snapshots, keeping a newest-first window bounded
- * by BOTH `keepNewest` count and `byteBudget` bytes (by payload lastSavedAt;
- * payloads without one count as oldest). The single newest snapshot is always
- * spared from the byte budget — evicting the session the user is in to satisfy
- * an average cannot be right; if it alone exceeds quota the retry fails
- * honestly and the UI toasts.
+ * Delete the oldest keys under `prefix`, keeping a newest-first window bounded
+ * by BOTH `keepNewest` count and `byteBudget` bytes (by payload lastSavedAt /
+ * updatedAt; payloads with neither count as oldest). The single newest entry
+ * is always spared from the byte budget — evicting the session the user is in
+ * to satisfy an average cannot be right; if it alone exceeds quota the retry
+ * fails honestly and the UI toasts.
  *
  * Resolves with the number of keys removed. Never rejects.
  */
-export async function evictOldestSnapshots(
-	keepNewest: number = MAX_SESSION_SNAPSHOTS,
-	byteBudget: number = SNAPSHOT_BYTES_BUDGET,
+export async function evictOldestKeys(
+	prefix: string,
+	keepNewest: number,
+	byteBudget: number,
 ): Promise<number> {
 	const b = backend();
 	if (!b) return 0;
@@ -297,17 +298,20 @@ export async function evictOldestSnapshots(
 	try {
 		all = (await b.get(null)) ?? {};
 	} catch (error) {
-		console.warn("[AI Sidebar] evictOldestSnapshots: list failed:", error);
+		console.warn("[AI Sidebar] evictOldestKeys: list failed:", error);
 		return 0;
 	}
 	const snapshots = Object.entries(all)
-		.filter(([k]) => k.startsWith(SESSION_SNAPSHOT_PREFIX))
+		.filter(([k]) => k.startsWith(prefix))
 		.map(([k, v]) => ({
 			k,
+			// Snapshots stamp lastSavedAt, overlay mirrors stamp updatedAt.
 			lastSavedAt:
 				typeof (v as { lastSavedAt?: unknown })?.lastSavedAt === "number"
-					? ((v as { lastSavedAt: number }).lastSavedAt ?? 0)
-					: 0,
+					? (v as { lastSavedAt: number }).lastSavedAt
+					: typeof (v as { updatedAt?: unknown })?.updatedAt === "number"
+						? (v as { updatedAt: number }).updatedAt
+						: 0,
 			bytes: snapshotBytes(v),
 		}))
 		.sort((a, b2) => a.lastSavedAt - b2.lastSavedAt);
@@ -332,13 +336,21 @@ export async function evictOldestSnapshots(
 	try {
 		await b.remove(victimKeys);
 	} catch (error) {
-		console.warn("[AI Sidebar] evictOldestSnapshots: remove failed:", error);
+		console.warn("[AI Sidebar] evictOldestKeys: remove failed:", error);
 		return 0;
 	}
 	console.log(
-		`[AI Sidebar] evictOldestSnapshots: removed ${victimKeys.length} oldest snapshot(s)`,
+		`[AI Sidebar] evictOldestKeys: removed ${victimKeys.length} oldest key(s) under ${prefix}`,
 	);
 	return victimKeys.length;
+}
+
+/** Snapshot-flavoured evictOldestKeys: newest 50 within 6MB. */
+export async function evictOldestSnapshots(
+	keepNewest: number = MAX_SESSION_SNAPSHOTS,
+	byteBudget: number = SNAPSHOT_BYTES_BUDGET,
+): Promise<number> {
+	return evictOldestKeys(SESSION_SNAPSHOT_PREFIX, keepNewest, byteBudget);
 }
 
 export interface StorageUsage {
