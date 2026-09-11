@@ -22,23 +22,15 @@ import {
 // ─── Arena DOM Integration ───────────────────────────────────────────────────────────────
 
 /**
- * Phase 10A Commit 1: Inject the 🗂 Session Library entry into Arena's native
- * quick-nav bar (Child 2 of the floating sidebar).
+ * Inject the 🗂 Session Library entry into Arena's native sidebar.
  *
- * Arena DOM path:
- *   [class*="sidebar-wrapper"]          ← sidebar wrapper
- *     .children[0]                         ← floating container
- *       .children[1]                       ← bg-sidebar
- *         .children[0]                     ← floating sidebar root
- *           Child 2 = quick-nav (New Chat / Leaderboard / Search)
+ * Arena DOM (2026-09, #20):
+ *   [data-sidebar="sidebar"]
+ *     [data-side="container"]   ← resolveQuickNavContainer()
+ *       ul[data-sidebar="menu"]
  */
 
 const ARENA_FOLDER_ENTRY_ATTR = "data-ai-sidebar-folder-entry";
-
-/**
- * Locate the Arena sidebar-wrapper element.
- * Returns null if Arena DOM is not present (graceful degradation).
- */
 
 /**
  * Build the 🗂 Session Library anchor element.
@@ -83,7 +75,7 @@ export function resetLibrarySection(): void {
 
 /**
  * Build the collapsible Session Library section container.
- * Injects inline into Arena's quick-nav area (between Child 2 and Child 3).
+ * Injects inline into Arena's sidebar container (sibling of the history menu).
  */
 function buildLibrarySection(): HTMLDivElement {
 	const section = document.createElement("div");

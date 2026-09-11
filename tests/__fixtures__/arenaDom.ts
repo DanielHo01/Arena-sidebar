@@ -5,24 +5,29 @@
 // e2e script that could not run on any machine. Building the tree in code keeps
 // it in lockstep with the selectors under test.
 //
-// The shape encodes Arena's real structure, which the production code indexes
-// positionally — wrapper > [0] floating > [1] bg-sidebar > [0] floatingRoot >
-// [2] quick-nav. Children at other indices are deliberate decoys: the whole
-// point is that the finder must pick the right one among siblings.
+// Shape as of 2026-09-09 (#20): shadcn Sidebar, semantic attributes, no
+// child-index path.
+//
+//     [data-sidebar="sidebar"]
+//       button[data-side="rail"]
+//       [data-side="container"]   ← Session Library injects here
+//         ul[data-sidebar="menu"]
+//         button
 //
 // Not a *.test.ts file, so Vitest's include glob does not pick it up as a suite.
 
 export interface SidebarOptions {
-	/** Class list on the outermost wrapper; must match SIDEBAR_WRAPPER_SELECTOR. */
-	wrapperClass?: string;
-	/** How many children the floating wrapper has. The LAST one is the bg-sidebar. */
-	floatingChildren?: number;
-	/** 0 leaves the bg-sidebar childless, to test the empty-branch guards. */
-	bgChildren?: number;
-	/** How many children the floatingRoot has. Index 2 is the quick-nav. */
-	rootChildren?: number;
-	/** Tag for the quick-nav node; production requires a DIV. */
-	navTag?: string;
+	/** When false, omit the [data-sidebar=sidebar] root entirely. */
+	sidebar?: boolean;
+	/** When false, omit [data-side=container] inside the sidebar. */
+	container?: boolean;
+	/** When false, omit ul[data-sidebar=menu] inside the container. */
+	menu?: boolean;
+	/**
+	 * Also stamp the legacy class-substring so fallback-finder tests have
+	 * something to match without a data-sidebar attribute.
+	 */
+	legacyWrapperClass?: boolean;
 }
 
 /**
@@ -32,41 +37,37 @@ export interface SidebarOptions {
  * `document.body.innerHTML = ""` in a beforeEach).
  */
 export function buildSidebar({
-	wrapperClass = "x sidebar-wrapper y",
-	floatingChildren = 2,
-	bgChildren = 1,
-	rootChildren = 3,
-	navTag = "div",
+	sidebar = true,
+	container = true,
+	menu = true,
+	legacyWrapperClass = false,
 }: SidebarOptions = {}): HTMLElement {
-	const wrapper = document.createElement("div");
-	wrapper.className = wrapperClass;
+	const root = document.createElement("div");
+	if (sidebar) root.setAttribute("data-sidebar", "sidebar");
+	if (legacyWrapperClass) root.className = "x sidebar-wrapper y";
 
-	const floating = document.createElement("div");
-	wrapper.appendChild(floating);
+	const rail = document.createElement("button");
+	rail.setAttribute("data-side", "rail");
+	root.appendChild(rail);
 
-	// children[0] is an unrelated sibling; children[1] IS the bg-sidebar.
-	for (let i = 0; i < floatingChildren - 1; i++) {
-		floating.appendChild(document.createElement("span"));
-	}
-	const bgSidebar = document.createElement("div");
-	floating.appendChild(bgSidebar);
-
-	const floatingRoot = document.createElement("div");
-	if (bgChildren > 0) bgSidebar.appendChild(floatingRoot);
-
-	for (let i = 0; i < rootChildren; i++) {
-		const child =
-			i === 2 ? document.createElement(navTag) : document.createElement("span");
-		child.dataset.slot = "nav" + i;
-		floatingRoot.appendChild(child);
+	if (container) {
+		const host = document.createElement("div");
+		host.setAttribute("data-side", "container");
+		host.dataset.slot = "container";
+		if (menu) {
+			const list = document.createElement("ul");
+			list.setAttribute("data-sidebar", "menu");
+			host.appendChild(list);
+			host.appendChild(document.createElement("button"));
+		}
+		root.appendChild(host);
 	}
 
-	document.body.appendChild(wrapper);
-	return wrapper;
+	document.body.appendChild(root);
+	return root;
 }
 
-/** The quick-nav node inside a tree built by buildSidebar (floatingRoot[2]). */
+/** The injection container inside a tree built by buildSidebar. */
 export function quickNavOf(wrapper: HTMLElement): HTMLElement {
-	return wrapper.firstElementChild!.children[1].firstElementChild!
-		.children[2] as HTMLElement;
+	return wrapper.querySelector('[data-side="container"]') as HTMLElement;
 }

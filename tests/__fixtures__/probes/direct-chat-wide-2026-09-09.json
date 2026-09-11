@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "id": "direct-chat-wide-2026-09-09",
+  "source": "issues #20 + #28, live Direct Chat 2026-09-09",
+  "capturedAt": "2026-09-09",
+  "page": "direct",
+  "url": "https://arena.ai/c/<uuid>",
+  "liveNotes": "105+ DOM messages on the long thread; fixture uses 4 pairs with the same class contract and user width 1400 (the old width>1000 filter dropped every bubble). Sidebar is shadcn data-sidebar / data-side. Battle Mode sits in the nav but is closed.",
+  "expect": {
+    "battle": false,
+    "sidebar": "ok",
+    "scrollFound": true,
+    "extractKeptMin": 8,
+    "extractUserHitsMin": 4,
+    "extractAsstHitsMin": 4
+  },
+  "dom": {
+    "sidebar": "shadcn",
+    "scroll": "radix",
+    "historyLinks": ["/c/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+    "modeButtons": [
+      { "text": "Direct Chat", "dataState": "open" },
+      { "text": "Battle Mode", "dataState": "closed" }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "text": "What is a transformer architecture?",
+        "width": 1400
+      },
+      {
+        "role": "assistant",
+        "text": "A transformer is a neural architecture that uses self-attention instead of recurrence to model sequences."
+      },
+      {
+        "role": "user",
+        "text": "And why does that beat an LSTM on long context?",
+        "width": 1400
+      },
+      {
+        "role": "assistant",
+        "text": "Self-attention lets every token see every other token in one step, so the path length does not grow with distance the way a recurrent state does."
+      },
+      {
+        "role": "user",
+        "text": "Give a short recipe for restaurant risotto.",
+        "width": 1400
+      },
+      {
+        "role": "assistant",
+        "text": "Toast carnaroli in a dry pan, add warm stock one ladle at a time, stir until the grains go all'onda, then finish off heat with cold butter and parmesan."
+      },
+      {
+        "role": "user",
+        "text": "Name three rainy-day hikes near Seattle.",
+        "width": 1400
+      },
+      {
+        "role": "assistant",
+        "text": "Rattlesnake Ledge stays reasonable in drizzle, Twin Falls is better when wet, and the Franklin Falls approach is short, flat, and loud with runoff."
+      }
+    ]
+  }
+}

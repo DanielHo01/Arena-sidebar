@@ -30,7 +30,7 @@ import {
 import { setupHistoryContextMenu } from "../ui/contextMenu";
 import { setupHistoryTitles } from "../historyTitles";
 import { getSessionId, routeKey } from "../platform/route";
-import { SCROLL_CONTAINER_SELECTOR } from "../platform/arenaDom";
+import { queryScrollContainer } from "../platform/arenaDom";
 
 /** What the loop calls when it decides something must happen. */
 export interface LoopHooks {
@@ -107,6 +107,20 @@ function handleRouteChange(hooks: LoopHooks): void {
 }
 
 /**
+ * Extract from the live DOM, merge, re-render. Persist only when the store
+ * actually grew — same rule as the 30s scan.
+ */
+function extractAndRefresh(hooks: LoopHooks, bindAnchors: boolean): void {
+	const prevCount = conversationStore.messages.length;
+	const domMsgs = extractMessages();
+	refreshStore({ dom: domMsgs, bindAnchors });
+	hooks.refreshUI();
+	if (conversationStore.messages.length !== prevCount) {
+		void conversationStore.saveToStorage();
+	}
+}
+
+/**
  * Watch the chat container and re-render when it settles.
  *
  * P2: observes only the chat container, not the whole document.body. Cascade
@@ -130,17 +144,20 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 
 			if (isFirstRender) {
 				isFirstRender = false;
-				hooks.refreshUI(); // instant on first render — no debounce wait
+				// #28: mutations used to re-render the (empty) store without
+				// re-extracting, so a first extract that missed the messages
+				// sat at 0 until the 30s periodic scan.
+				extractAndRefresh(hooks, true);
 				return;
 			}
 			if (timers.debounce !== null) clearTimeout(timers.debounce);
 			timers.debounce = setTimeout(() => {
 				isFirstRender = false;
-				hooks.refreshUI();
+				extractAndRefresh(hooks, true);
 			}, 800);
 		}, 800);
 	});
-	const chatContainer = document.querySelector(SCROLL_CONTAINER_SELECTOR);
+	const chatContainer = queryScrollContainer();
 	const target =
 		chatContainer ?? document.querySelector("main") ?? document.body;
 	observer.observe(target, { childList: true, subtree: true });
@@ -166,15 +183,7 @@ export function startPeriodicLoop(hooks: LoopHooks): Disposer {
 	}, 2000);
 	timers.refreshInterval = setInterval(() => {
 		if (panel.isDragging) return;
-		const prevCount = conversationStore.messages.length;
-		const domMsgs = extractMessages();
-		refreshStore({ dom: domMsgs, bindAnchors: false });
-		hooks.refreshUI();
-		// Sprint 5: persist only when new messages arrived — writing the full
-		// session payload every 30s (even when idle) caused avoidable churn.
-		if (conversationStore.messages.length !== prevCount) {
-			void conversationStore.saveToStorage();
-		}
+		extractAndRefresh(hooks, false);
 	}, 30000);
 	return () => {
 		if (timers.pollInterval !== null) clearInterval(timers.pollInterval);

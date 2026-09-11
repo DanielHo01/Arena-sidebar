@@ -5,13 +5,14 @@
 // production does not use at all. Production uses the two class-substring
 // selectors below, so until now extract.ts had 2.34% coverage and its real
 // behaviour was unverified.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	ASSISTANT_MESSAGE_SELECTOR,
 	USER_MESSAGE_SELECTOR,
 	extractMessages,
 	extractText,
 	generateStableId,
+	getLastExtractStats,
 	resetExtractState,
 } from "../../src/extract";
 import { cachedElements } from "../../src/state";
@@ -46,6 +47,12 @@ beforeEach(() => {
 	cachedElements.clear();
 	document.body.innerHTML = "";
 	vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(BOX);
+	vi.spyOn(console, "log").mockImplementation(() => {});
+	vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
 });
 
 describe("selectors", () => {
@@ -139,6 +146,73 @@ describe("extractMessages", () => {
 		expect(extractMessages()).toHaveLength(1);
 		document.body.innerHTML = `<main>${user("second question here")}</main>`;
 		expect(extractMessages()).toHaveLength(1);
+	});
+
+	it("keeps a user bubble wider than 1000px (#28)", () => {
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+			...BOX,
+			width: 1400,
+			right: 1400,
+		} as DOMRect);
+		document.body.innerHTML = `<main>${user("a real question")}</main>`;
+		expect(extractMessages()).toHaveLength(1);
+		expect(getLastExtractStats().kept).toBe(1);
+		expect(getLastExtractStats().dropped.tooNarrow).toBe(0);
+	});
+
+	it("records filter reasons when selector hits are dropped", () => {
+		vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+			...BOX,
+			width: 50,
+			right: 50,
+		} as DOMRect);
+		document.body.innerHTML = `<main>${user("a real question")}${assistant(LONG)}</main>`;
+		expect(extractMessages()).toHaveLength(0);
+		const stats = getLastExtractStats();
+		expect(stats.userHits).toBe(1);
+		expect(stats.asstHits).toBe(1);
+		expect(stats.kept).toBe(0);
+		expect(stats.unchanged).toBe(false);
+		expect(stats.dropped.tooNarrow).toBe(2);
+	});
+
+	it("counts tooShort assistant hits without keeping them", () => {
+		document.body.innerHTML = `<main>${assistant("too short")}</main>`;
+		expect(extractMessages()).toHaveLength(0);
+		expect(getLastExtractStats().asstHits).toBe(1);
+		expect(getLastExtractStats().dropped.tooShort).toBe(1);
+	});
+
+	it("marks unchanged when the signature matches", () => {
+		document.body.innerHTML = `<main>${user("a real question")}${assistant(LONG)}</main>`;
+		expect(extractMessages()).toHaveLength(2);
+		expect(getLastExtractStats().unchanged).toBe(false);
+		expect(extractMessages()).toHaveLength(0);
+		expect(getLastExtractStats().unchanged).toBe(true);
+		expect(getLastExtractStats().kept).toBe(0);
+		expect(getLastExtractStats().userHits).toBe(1);
+	});
+
+	it("resetExtractState clears the last stats snapshot", () => {
+		document.body.innerHTML = `<main>${user("a real question")}</main>`;
+		extractMessages();
+		expect(getLastExtractStats().kept).toBe(1);
+		resetExtractState();
+		expect(getLastExtractStats()).toEqual({
+			userHits: 0,
+			asstHits: 0,
+			kept: 0,
+			unchanged: false,
+			dropped: {
+				tag: 0,
+				ariaHidden: 0,
+				tooShort: 0,
+				tooManyLines: 0,
+				tooNarrow: 0,
+				emptyText: 0,
+				nestedDupe: 0,
+			},
+		});
 	});
 });
 

@@ -18,5 +18,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["scripts", "tests"]
+  "include": ["scripts", "tests"],
+  "exclude": ["scripts/gen-probe.ts"]
 }

@@ -139,7 +139,7 @@ describe("ensureArenaFolderEntry", () => {
 		expect(librarySection(wrapper).className).toBe(
 			"aria-session-library-section",
 		);
-		expect(existing).toBe(quickNav.children[1]);
+		expect(quickNav.contains(existing)).toBe(true);
 		expect(quickNav.lastElementChild).toBe(librarySection(wrapper));
 
 		const event = new MouseEvent("click", {

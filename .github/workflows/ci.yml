@@ -48,6 +48,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Probe is generated from the DOM contract
+        run: npm run probe:check
+
       - name: Test
         run: npm run test
 

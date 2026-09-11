@@ -243,9 +243,15 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 ## 自动化测试
 
 ```bash
-npm test                      # 全套 Vitest（jsdom 环境）
+npm test                      # 全套 Vitest（jsdom 环境），含 DOM 合同快照重放
 npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
+npm run gen:probe             # 从 arenaContract.ts 生成 scripts/arena-probe.js
+npm run probe:check           # CI 用：探针与合同不同步则失败
 ```
+
+真站 DOM 合同：`src/platform/arenaContract.ts` 是选择器唯一来源；
+`tests/__fixtures__/probes/*.json` 是 2026-09 真页的可重放摘要。Arena 改版时
+把探针输出的 `snapshot` 丢进该目录，不必每次 sideload 点一遍。
 
 **当前状态**：
 

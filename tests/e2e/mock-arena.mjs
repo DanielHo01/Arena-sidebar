@@ -21,9 +21,8 @@ import http from "node:http";
 
 /** @param {string} text */
 function userMsg(text) {
-	// The geometry is part of the DOM contract: extract.ts rejects user
-	// messages outside 200-1000px wide (real Arena caps user bubbles via
-	// Tailwind max-w-lg, ~512px). The mock has no Tailwind, so pin it inline.
+	// The geometry is part of the DOM contract: extract.ts rejects bubbles
+	// narrower than 200px. The mock has no Tailwind, so pin a real width.
 	return `<div class="bg-surface-raised rounded-lg px-4 py-3 max-w-lg ml-auto" style="width: fit-content; max-width: 512px; margin-left: auto;"><p class="whitespace-pre-wrap">${text}</p></div>`;
 }
 

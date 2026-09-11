@@ -8,24 +8,21 @@
 2. Chrome → `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」→ 选 `dist/`
 3. 登录 https://arena.ai,打开任一有多轮对话的会话
 
-## §0 结构探针（跑在冒烟之前，一次性，给 AI 回传真站 DOM）
+## §0 结构探针（DOM 改版时才跑，不是每次 PR）
 
-沙箱直连 arena.ai 被封，#14 的检测规则只能靠真站数据校准。探针只读
-（不点击、不写 DOM、不发请求），输出已截断到每段 ≤60 字符，
-粘贴前仍请扫一眼、删掉敏感对话片段。
+选择器合同在 `src/platform/arenaContract.ts`，CI 用
+`tests/__fixtures__/probes/*.json` 重放生产函数。平时 **`npm test` 就是
+验收**；下面只在 arena.ai 改了布局、或 CI 合同测试红了时做。
 
-1. 打开 `scripts/arena-probe.js`，全选复制
-2. 在以下四种页面**各跑一次**（F12 → Console → 粘贴 → 回车 → 输出自动进剪贴板）：
-   - Direct（普通 /c/ 会话，有多轮对话）
-   - Battle（双回答已生成完、**投票条可见**时再跑）
-   - Agent 模式会话
-   - Model（Direct model / side-by-side）会话
-3. 把四次输出分别贴回给 AI（注明是哪种模式）
+1. `npm run gen:probe`（不要手改 `scripts/arena-probe.js`）
+2. 打开探针全文，在出问题的那一页 Console 粘贴（只读）
+3. 把复制到的 **`snapshot`** 存成 `tests/__fixtures__/probes/<id>.json`
+   （对话正文改成占位句；核对 `expect.battle` / `expect.sidebar`）
+4. `npm test` — 新文件会被自动拾取
 
-探针自带三项现成结论，人眼可先看一眼 Console 头两行：
-`Battle检测 verdict`（当前规则在该页会不会触发）、`提取器 user/asst`
-（Agent/Model 页命中为 0 即提取器不认识该布局——属已知未来工作，
-不阻塞本轮合并）、`扩展host/FAB`（扩展本身是否存活）。
+探针头两行仍可扫一眼：`Battle检测 verdict`、`提取器 user/asst`。
+`FAB=false` 在 closed shadow 下是正常误报，不要当扩展没注入。
+详情见 `tests/__fixtures__/probes/README.md`。
 
 ## 冒烟步骤
 
@@ -58,12 +55,14 @@
 
 - [ ] 在一个**安静**(无流式输出)的页面切换会话 → 新会话的面板应立即渲染,而不是空白 30 秒后才出现(本轮 E2E 发现并修复的 bug)
 
-### ⑥ Battle 模式提示(#14)
+### ⑥ Battle 模式提示(#14 / #21)
+
+检测本身由 `search-arena-battle-2026-09-09` 合同快照覆盖，不必为了合 PR 再采一次。
+真站抽检（可选，合同红了或 Arena 改版时）：
 
 - [ ] 打开一个 Battle 对话(盲测双模型 + 投票按钮的页面)
 - [ ] 面板(或 FAB 点开后)应显示 `⚔️ Battle mode — round navigation isn't supported here yet`,而不是空白无 UI
 - [ ] 切回 Direct Chat / 普通 /c/ 会话 → 提示消失,轮次正常渲染
-- [ ] **附带确认**(决定 #14 检测规则是否要调):投票区按钮的真实文案是什么?目前按 "A is better / B is better / Tie / Both bad" 四选三猜的;另看一眼模式 tab 是不是 `role="tab"` + 选中态(aria-selected / data-state="active")
 
 ### ⑦ 本地编辑 / 删除(#15)
 

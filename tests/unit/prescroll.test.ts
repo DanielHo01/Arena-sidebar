@@ -250,4 +250,28 @@ describe("virtualized scroll algorithm", () => {
 		vi.advanceTimersByTime(120 * 3 + 600);
 		expect(done).toHaveBeenCalledTimes(1);
 	});
+
+	it("retry uses the main fallback when semantic selectors miss (#28)", () => {
+		// New Arena dropped overscroll-none. peek would never see this node;
+		// after a few ticks findScrollContainer's largest-in-main fallback must.
+		document.body.innerHTML = "";
+		const done = vi.fn();
+		startPreScroll(done);
+
+		document.body.innerHTML = `<main><div data-fallback></div></main>`;
+		const el = document.querySelector("[data-fallback]") as HTMLElement;
+		setGeometry(el, 4000, 500);
+		const scrollBy = vi.fn();
+		Object.defineProperty(el, "scrollBy", {
+			configurable: true,
+			value: scrollBy,
+		});
+
+		vi.advanceTimersByTime(RETRY_MS);
+		expect(isPreScrollActive()).toBe(true);
+
+		vi.advanceTimersByTime(120 * 3 + 600);
+		expect(done).toHaveBeenCalledTimes(1);
+		expect(scrollBy).toHaveBeenCalled();
+	});
 });

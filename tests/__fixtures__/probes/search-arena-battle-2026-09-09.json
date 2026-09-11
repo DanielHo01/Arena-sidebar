@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "search-arena-battle-2026-09-09",
+  "source": "issue #21, live Search Arena 2026-09-09. Old EN+tab detector: signal1=null, quorum 0/3.",
+  "capturedAt": "2026-09-09",
+  "page": "battle",
+  "url": "https://arena.ai/c/<uuid>",
+  "liveNotes": "Vote bar 「A 更好 / B 更好 / 都好 / 都不好」×2. Top entry is <button data-state=open>Battle Mode</button>, not role=tab. Extract of the two-column layout is #24, not this contract.",
+  "expect": {
+    "battle": true,
+    "sidebar": "ok",
+    "scrollFound": true
+  },
+  "dom": {
+    "sidebar": "shadcn",
+    "scroll": "radix",
+    "modeButtons": [
+      { "text": "Direct Chat", "dataState": "closed" },
+      { "text": "Battle Mode", "dataState": "open" }
+    ],
+    "voteButtons": ["A 更好", "B 更好", "都好", "都不好"]
+  }
+}
