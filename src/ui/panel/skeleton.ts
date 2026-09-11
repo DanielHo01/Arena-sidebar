@@ -8,6 +8,7 @@ import { ICON_X_SVG, UI_STYLES } from "../styles";
 import { exportConversation, summarizeRounds } from "../modals";
 import { cycleThemeMode } from "../../features/theme";
 import { THEME_GLYPHS } from "../../platform/theme";
+import { getStorageUsage } from "../../platform/storage";
 
 // ─── Panel skeleton ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,14 @@ export function ensurePanelSkeleton(
 	// All action buttons wrapped in header-actions
 	const headerActions = document.createElement("div");
 	headerActions.className = "header-actions";
+
+	// Storage quota dot (#23), first in the actions row. Updated by
+	// updateStorageDot(), which content.ts calls from refreshUI; neutral
+	// until the first usage sample lands.
+	const storageDot = document.createElement("span");
+	storageDot.className = "storage-dot";
+	storageDot.title = "Storage usage: measuring…";
+	headerActions.appendChild(storageDot);
 
 	// Order toggle
 	const orderBtn = makeHeaderBtn(
@@ -170,6 +179,52 @@ export function ensurePanelSkeleton(
 
 	shadowRoot.appendChild(panelEl);
 	return panelEl;
+}
+
+// ─── Storage quota dot (#23) ─────────────────────────────────────────────────────────────
+//
+// refreshUI calls this on every render, so the cheap path (no panel yet, or
+// sampled recently) must do no async work at all — just two guards.
+
+let lastDotSampleAt = 0;
+const DOT_SAMPLE_THROTTLE_MS = 60_000;
+
+function dotLevel(frac: number): string {
+	if (frac >= 0.95) return "full";
+	if (frac >= 0.8) return "high";
+	if (frac >= 0.5) return "warn";
+	return "";
+}
+
+function formatMB(bytes: number): string {
+	return (bytes / (1024 * 1024)).toFixed(1) + "MB";
+}
+
+/**
+ * Refresh the header storage dot from chrome.storage usage. No-op when the
+ * panel is not rendered or a sample landed within the last minute.
+ */
+export function updateStorageDot(shadowRoot: ShadowRoot): void {
+	if (!shadowRoot.querySelector(".storage-dot")) return;
+	const now = Date.now();
+	if (now - lastDotSampleAt < DOT_SAMPLE_THROTTLE_MS) return;
+	lastDotSampleAt = now;
+	void (async () => {
+		const usage = await getStorageUsage();
+		const dot = shadowRoot.querySelector(".storage-dot");
+		if (!dot) return;
+		if (!usage || usage.quota <= 0) {
+			dot.setAttribute("title", "Storage usage: unavailable");
+			return;
+		}
+		const frac = usage.used / usage.quota;
+		const level = dotLevel(frac);
+		dot.className = "storage-dot" + (level ? " " + level : "");
+		dot.setAttribute(
+			"title",
+			`Storage usage: ${formatMB(usage.used)} / ${formatMB(usage.quota)} (${Math.round(frac * 100)}%)`,
+		);
+	})();
 }
 
 // ─── Ensure styles are injected ──────────────────────────────────────────────────────────

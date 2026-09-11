@@ -324,3 +324,98 @@ describe("dropTombstonedMessages (#15)", () => {
 		}
 	});
 });
+
+describe("saveToStorage persistence (#22/#23)", () => {
+	function memBackend() {
+		const data = new Map<string, unknown>();
+		setStorageBackend({
+			get: async (keys: string | string[] | null) => {
+				const list =
+					keys === null
+						? [...data.keys()]
+						: Array.isArray(keys)
+							? keys
+							: [keys];
+				return Object.fromEntries(
+					list.filter((k) => data.has(k)).map((k) => [k, data.get(k)]),
+				);
+			},
+			set: async (items: Record<string, unknown>) => {
+				for (const [k, v] of Object.entries(items)) data.set(k, v);
+			},
+			remove: async (keys: string | string[]) => {
+				for (const k of Array.isArray(keys) ? keys : [keys]) data.delete(k);
+			},
+		});
+		return data;
+	}
+
+	it("resolves false without a session or messages", async () => {
+		memBackend();
+		try {
+			conversationStore.sessionId = "";
+			refreshStore({ dom: [{ id: "m1", role: "user", content: "x" }] });
+			expect(await conversationStore.saveToStorage()).toBe(false);
+			conversationStore.sessionId = "s1";
+			conversationStore.reset();
+			expect(await conversationStore.saveToStorage()).toBe(false);
+		} finally {
+			setStorageBackend(null);
+			conversationStore.sessionId = "";
+		}
+	});
+
+	it("resolves false when storage is unavailable", async () => {
+		setStorageBackend(null);
+		try {
+			conversationStore.sessionId = "s1";
+			refreshStore({ dom: [{ id: "m1", role: "user", content: "x" }] });
+			expect(await conversationStore.saveToStorage()).toBe(false);
+		} finally {
+			conversationStore.sessionId = "";
+		}
+	});
+
+	it("strips domId from the payload but keeps it live (#22 slimming)", async () => {
+		const data = memBackend();
+		try {
+			conversationStore.sessionId = "s1";
+			refreshStore({
+				dom: [{ id: "m1", role: "user", content: "hello" }],
+			});
+			conversationStore.messages[0].domId = "ais-7";
+			expect(await conversationStore.saveToStorage()).toBe(true);
+
+			const payload = data.get("edge-ai-sidebar:session:s1") as {
+				messages: Array<{ domId?: string; content: string }>;
+			};
+			expect(payload.messages[0].content).toBe("hello");
+			expect("domId" in payload.messages[0]).toBe(false);
+			// The live message is untouched — only the persisted copy slims.
+			expect(conversationStore.messages[0].domId).toBe("ais-7");
+		} finally {
+			setStorageBackend(null);
+			conversationStore.sessionId = "";
+		}
+	});
+
+	it("a domId-less payload restores and rebinds", async () => {
+		memBackend();
+		try {
+			conversationStore.sessionId = "s1";
+			refreshStore({
+				dom: [
+					{ id: "u1", role: "user", content: "first" },
+					{ id: "a1", role: "assistant", content: "answer one" },
+				],
+			});
+			await conversationStore.saveToStorage();
+			conversationStore.reset();
+			const restored = await conversationStore.loadFromStorage("s1");
+			expect(restored).toEqual({ msgs: 2, rounds: 1 });
+		} finally {
+			setStorageBackend(null);
+			conversationStore.sessionId = "";
+		}
+	});
+});

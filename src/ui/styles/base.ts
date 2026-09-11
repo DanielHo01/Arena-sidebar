@@ -175,6 +175,36 @@ export const PANEL_BASE_CSS = /* css */ `
     flex-shrink: 0;
   }
 
+  /* Storage quota dot (#23): green <50%, yellow <80%, orange <95%, red above.
+     The tooltip (title attr) carries the exact MB/%. */
+  .storage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--arena-ok, #22c55e);
+  }
+  .storage-dot.warn { background: var(--arena-warn, #eab308); }
+  .storage-dot.high { background: var(--arena-high, #f97316); }
+  .storage-dot.full { background: var(--arena-full, #ef4444); }
+
+  /* Transient bottom toast (#22): storage-full and friends. */
+  .ai-toast {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: #fff;
+    background: rgba(17, 24, 39, 0.92);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
+    z-index: 10;
+    pointer-events: none;
+  }
+
   .summary-btn {
     width: 24px;
     height: 24px;

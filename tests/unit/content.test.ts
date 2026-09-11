@@ -53,6 +53,9 @@ const m = vi.hoisted(() => {
 		getSessionId: vi.fn(() => ""),
 		isSessionRoute: vi.fn(() => false),
 		storageGet: vi.fn(async (): Promise<unknown> => undefined),
+		onStorageWriteFailed: vi.fn(() => vi.fn()),
+		showToast: vi.fn(),
+		updateStorageDot: vi.fn(),
 		loadHiddenRounds: vi.fn(async () => {
 			order.push("loadHiddenRounds");
 		}),
@@ -119,7 +122,14 @@ vi.mock("../../src/platform/route", () => ({
 	getSessionId: m.getSessionId,
 	isSessionRoute: m.isSessionRoute,
 }));
-vi.mock("../../src/platform/storage", () => ({ storageGet: m.storageGet }));
+vi.mock("../../src/platform/storage", () => ({
+	storageGet: m.storageGet,
+	onStorageWriteFailed: m.onStorageWriteFailed,
+}));
+vi.mock("../../src/ui/toast", () => ({ showToast: m.showToast }));
+vi.mock("../../src/ui/panel/skeleton", () => ({
+	updateStorageDot: m.updateStorageDot,
+}));
 vi.mock("../../src/rounds", () => ({
 	loadHiddenRounds: m.loadHiddenRounds,
 	loadDeletedMessages: m.loadDeletedMessages,
@@ -285,6 +295,25 @@ describe("content.ts assembler", () => {
 		const call = add.mock.calls.find(([t]) => t === "pagehide");
 		expect(call).toBeDefined();
 		expect(call![2]).toEqual({ once: true });
+	});
+
+	it("subscribes to storage write failures for the full-storage toast (#22)", async () => {
+		await loadContent();
+
+		expect(m.onStorageWriteFailed).toHaveBeenCalledTimes(1);
+	});
+
+	it("refreshes the storage dot on every render (#23)", async () => {
+		await loadContent();
+
+		const hooks = m.startDomLoop.mock.calls[0]![0] as {
+			refreshUI: () => void;
+		};
+		m.updateStorageDot.mockClear();
+		hooks.refreshUI();
+
+		expect(m.renderUI).toHaveBeenCalled();
+		expect(m.updateStorageDot).toHaveBeenCalledTimes(1);
 	});
 
 	describe("rebuildForCurrentRoute", () => {

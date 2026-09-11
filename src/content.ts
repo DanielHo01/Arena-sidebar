@@ -48,7 +48,9 @@ import {
 import { setupHistoryContextMenu } from "./ui/contextMenu";
 import { setupHistoryTitles } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
-import { storageGet } from "./platform/storage";
+import { onStorageWriteFailed, storageGet } from "./platform/storage";
+import { showToast } from "./ui/toast";
+import { updateStorageDot } from "./ui/panel/skeleton";
 import {
 	loadDeletedMessages,
 	loadHiddenRounds,
@@ -105,7 +107,33 @@ let shadowRoot: ShadowRoot | null = null;
 
 /** Re-render from the current store. The reconciler itself lives in ui/render.ts. */
 function refreshUI() {
-	if (shadowRoot) renderUI(shadowRoot, refreshUI);
+	if (!shadowRoot) return;
+	renderUI(shadowRoot, refreshUI);
+	// Cheap when throttled (no panel → no-op; sampled recently → no-op).
+	updateStorageDot(shadowRoot);
+}
+
+// ─── Storage failure feedback (#22) ────────────────────────────────────────────────────
+//
+// Writes that failed even after quota eviction surface as a toast. Throttled:
+// a persistently failing periodic save must not re-toast every few seconds.
+
+let lastStorageToastAt = 0;
+const STORAGE_TOAST_THROTTLE_MS = 60_000;
+
+function setupStorageFailureToast(): () => void {
+	return onStorageWriteFailed((failure) => {
+		if (!shadowRoot) return;
+		const now = Date.now();
+		if (now - lastStorageToastAt < STORAGE_TOAST_THROTTLE_MS) return;
+		lastStorageToastAt = now;
+		showToast(
+			shadowRoot,
+			failure.reason === "quota"
+				? `本地存储已满${failure.evicted > 0 ? `（已自动清理 ${failure.evicted} 个旧会话）` : ""}，本次修改可能不会保存`
+				: "本地保存失败，本次修改可能不会保存",
+		);
+	});
 }
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
@@ -202,6 +230,7 @@ try {
 		// registry, so there is one place to tear the whole extension down.
 		registerDisposer(setupFoldersStorageSync()); // Phase 10A: cross-tab storage changes
 		registerDisposer(setupSessionMetaSync()); // Phase 3: folders subscribes to store changes
+		registerDisposer(setupStorageFailureToast()); // #22: toast when a write fails for good
 		// Hidden-round flags: rebuildForCurrentRoute loads them per session; this
 		// keeps the session this page starts on in step with other tabs. Route
 		// changes re-subscribe from app/loop.ts handleRouteChange.

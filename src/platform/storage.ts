@@ -27,6 +27,13 @@ export interface StorageBackend {
 	get(keys: string | string[] | null): Promise<Record<string, unknown>>;
 	set(items: Record<string, unknown>): Promise<void>;
 	remove(keys: string | string[]): Promise<void>;
+	/**
+	 * Optional: chrome.storage.local.getBytesInUse. Absent in tests unless the
+	 * fake provides it — getStorageUsage() resolves null without it.
+	 */
+	getBytesInUse?(keys?: string | string[] | null): Promise<number>;
+	/** Optional: chrome.storage.local.QUOTA_BYTES. */
+	quotaBytes?: number;
 }
 
 let override: StorageBackend | null = null;
@@ -44,6 +51,8 @@ function chromeBackend(): StorageBackend | null {
 			local.get(keys as string | string[] | Record<string, unknown> | null),
 		set: (items) => local.set(items),
 		remove: (keys) => local.remove(keys as string | string[]),
+		getBytesInUse: (keys) => local.getBytesInUse(keys ?? null),
+		quotaBytes: local.QUOTA_BYTES,
 	};
 }
 
@@ -85,20 +94,119 @@ export async function storageGetAll(): Promise<Record<string, unknown>> {
 	}
 }
 
+/** Why a write did not happen. */
+export type StorageWriteFailureReason = "unavailable" | "quota" | "error";
+
+export interface StorageWriteResult {
+	ok: boolean;
+	/** Present when ok is false. */
+	reason?: StorageWriteFailureReason;
+	/** Snapshots evicted by the quota-retry path (0 when none were). */
+	evicted?: number;
+}
+
+export interface StorageWriteFailure {
+	key: string;
+	reason: Exclude<StorageWriteFailureReason, "unavailable">;
+	evicted: number;
+}
+
+const writeFailureListeners = new Set<(f: StorageWriteFailure) => void>();
+
+/**
+ * Subscribe to writes that failed even after the quota-retry path. This is
+ * the seam that lets the UI toast "storage full" without the data layer
+ * importing the UI layer. "unavailable" (no backend at all) is NOT reported:
+ * every write fails that way in unsupported contexts and it would only spam.
+ */
+export function onStorageWriteFailed(
+	listener: (f: StorageWriteFailure) => void,
+): Disposer {
+	writeFailureListeners.add(listener);
+	return () => {
+		writeFailureListeners.delete(listener);
+	};
+}
+
+function emitWriteFailure(failure: StorageWriteFailure): void {
+	for (const listener of writeFailureListeners) {
+		try {
+			listener(failure);
+		} catch (error) {
+			console.warn("[AI Sidebar] storage failure listener threw:", error);
+		}
+	}
+}
+
+/**
+ * True when the rejection is chrome.storage.local's quota error
+ * ("Resource::kQuotaBytes quota exceeded"). Matched loosely: Chromium has
+ * shipped both `kQuotaBytes` and `QUOTA_BYTES` phrasings.
+ */
+export function isQuotaError(error: unknown): boolean {
+	return /quota/i.test(String(error));
+}
+
+/**
+ * Write one key, with an optional quota-retry: when the write rejects with a
+ * quota error and evictOnQuota is set, the oldest session snapshots are
+ * evicted and the write is retried exactly once (#22).
+ *
+ * Never rejects. Callers that need the failure reason (for UI feedback) use
+ * this; callers that only need ok/fail use storageSet.
+ */
+export async function storageSetDetailed(
+	key: string,
+	value: unknown,
+	opts?: { evictOnQuota?: boolean },
+): Promise<StorageWriteResult> {
+	const b = backend();
+	if (!b) return { ok: false, reason: "unavailable" };
+	try {
+		await b.set({ [key]: value });
+		return { ok: true };
+	} catch (error) {
+		if (opts?.evictOnQuota && isQuotaError(error)) {
+			const evicted = await evictOldestSnapshots(QUOTA_EVICT_KEEP);
+			try {
+				await b.set({ [key]: value });
+				console.log(
+					`[AI Sidebar] storageSet recovered after evicting ${evicted} snapshot(s):`,
+					key,
+				);
+				return { ok: true, evicted };
+			} catch (retryError) {
+				console.warn(
+					"[AI Sidebar] storageSet failed after eviction:",
+					key,
+					retryError,
+				);
+				const failure = {
+					key,
+					reason: isQuotaError(retryError)
+						? ("quota" as const)
+						: ("error" as const),
+					evicted,
+				};
+				emitWriteFailure(failure);
+				return { ok: false, reason: failure.reason, evicted };
+			}
+		}
+		console.warn("[AI Sidebar] storageSet failed:", key, error);
+		const reason = isQuotaError(error)
+			? ("quota" as const)
+			: ("error" as const);
+		emitWriteFailure({ key, reason, evicted: 0 });
+		return { ok: false, reason, evicted: 0 };
+	}
+}
+
 /** Write one key. Resolves false when the write did not happen. */
 export async function storageSet(
 	key: string,
 	value: unknown,
 ): Promise<boolean> {
-	const b = backend();
-	if (!b) return false;
-	try {
-		await b.set({ [key]: value });
-		return true;
-	} catch (error) {
-		console.warn("[AI Sidebar] storageSet failed:", key, error);
-		return false;
-	}
+	return (await storageSetDetailed(key, value)).ok;
 }
 
 /** Delete keys. Resolves false when the delete did not happen. */
@@ -111,6 +219,99 @@ export async function storageRemove(keys: string[]): Promise<boolean> {
 	} catch (error) {
 		console.warn("[AI Sidebar] storageRemove failed:", keys, error);
 		return false;
+	}
+}
+
+// ─── Quota monitoring + LRU eviction (#22 / #23) ──────────────────────────────────────────
+//
+// chrome.storage.local is ~10MB and every session snapshot stores full message
+// content. Without a ceiling the area fills up and EVERY write (snapshots,
+// folder index, hidden flags) starts failing — silently, per call. The two
+// guards:
+//
+//   1. Proactive count cap: after each snapshot save the store trims to
+//      MAX_SESSION_SNAPSHOTS newest (throttled; see conversationStore).
+//   2. Reactive quota retry: storageSetDetailed with evictOnQuota evicts down
+//      to QUOTA_EVICT_KEEP newest and retries once.
+//
+// Only `edge-ai-sidebar:session:*` keys are ever evicted — the folder index,
+// renames, hidden flags and theme are small and irreplaceable, while a
+// snapshot is re-derivable: revisiting the session re-extracts it from DOM.
+// (Edits made inside the extension on an evicted session are the one thing
+// that is not recoverable; the emergency path accepts that.)
+
+/** Key prefix for per-session message snapshots. */
+export const SESSION_SNAPSHOT_PREFIX = "edge-ai-sidebar:session:";
+
+/** Proactive cap: newest N snapshots are kept, older ones trimmed. */
+export const MAX_SESSION_SNAPSHOTS = 50;
+
+/** Emergency floor: a quota retry keeps only the newest N snapshots. */
+export const QUOTA_EVICT_KEEP = 10;
+
+/**
+ * Delete the oldest session snapshots, keeping the newest `keepNewest`
+ * (by payload lastSavedAt; payloads without one count as oldest).
+ * Resolves with the number of keys removed. Never rejects.
+ */
+export async function evictOldestSnapshots(
+	keepNewest: number = MAX_SESSION_SNAPSHOTS,
+): Promise<number> {
+	const b = backend();
+	if (!b) return 0;
+	let all: Record<string, unknown>;
+	try {
+		all = (await b.get(null)) ?? {};
+	} catch (error) {
+		console.warn("[AI Sidebar] evictOldestSnapshots: list failed:", error);
+		return 0;
+	}
+	const snapshots = Object.entries(all)
+		.filter(([k]) => k.startsWith(SESSION_SNAPSHOT_PREFIX))
+		.map(([k, v]) => ({
+			k,
+			lastSavedAt:
+				typeof (v as { lastSavedAt?: unknown })?.lastSavedAt === "number"
+					? ((v as { lastSavedAt: number }).lastSavedAt ?? 0)
+					: 0,
+		}))
+		.sort((a, b2) => a.lastSavedAt - b2.lastSavedAt);
+	if (snapshots.length <= keepNewest) return 0;
+	const victimKeys = snapshots
+		.slice(0, snapshots.length - keepNewest)
+		.map((s) => s.k);
+	try {
+		await b.remove(victimKeys);
+	} catch (error) {
+		console.warn("[AI Sidebar] evictOldestSnapshots: remove failed:", error);
+		return 0;
+	}
+	console.log(
+		`[AI Sidebar] evictOldestSnapshots: removed ${victimKeys.length} oldest snapshot(s)`,
+	);
+	return victimKeys.length;
+}
+
+export interface StorageUsage {
+	used: number;
+	quota: number;
+}
+
+/**
+ * Bytes in use vs quota for the local area. Resolves null when no backend
+ * exists or the backend cannot report usage (test fakes without
+ * getBytesInUse). Never rejects.
+ */
+export async function getStorageUsage(): Promise<StorageUsage | null> {
+	const b = backend();
+	if (!b?.getBytesInUse) return null;
+	try {
+		const used = await b.getBytesInUse(null);
+		const quota = b.quotaBytes ?? 10 * 1024 * 1024;
+		return { used, quota };
+	} catch (error) {
+		console.warn("[AI Sidebar] getStorageUsage failed:", error);
+		return null;
 	}
 }
 

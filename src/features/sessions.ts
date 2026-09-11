@@ -14,7 +14,7 @@ import {
 	storageGet,
 	storageGetAll,
 	storageRemove,
-	storageSet,
+	storageSetDetailed,
 } from "../platform/storage";
 
 // ─── Default folders ─────────────────────────────────────────────────────────────────
@@ -51,10 +51,17 @@ export const foldersState = {
 export const FOLDERS_KEY = "edge-ai-sidebar:folders";
 
 function saveToStorage() {
-	void storageSet(FOLDERS_KEY, {
-		folders: foldersState.folders,
-		sessions: Array.from(foldersState.sessions.entries()),
-	});
+	// #22: the folder index is small but irreplaceable — when the area is
+	// full, evict old session snapshots (re-derivable) instead of dropping
+	// the user's folders/renames.
+	void storageSetDetailed(
+		FOLDERS_KEY,
+		{
+			folders: foldersState.folders,
+			sessions: Array.from(foldersState.sessions.entries()),
+		},
+		{ evictOnQuota: true },
+	);
 }
 
 async function loadFromStorage(): Promise<void> {
