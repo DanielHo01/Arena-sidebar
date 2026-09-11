@@ -83,7 +83,7 @@ D:\edge-ai-sidebar\
 │   │   ├── arenaDom.ts         所有编码 arena.ai 结构知识的选择器与探针（142 行）
 │   │   ├── clipboard.ts        navigator.clipboard 唯一封装（58 行）
 │   │   ├── route.ts            SPA 路由解析（49 行）
-│   │   └── storage.ts          chrome.storage 唯一封装，永不 reject（138 行）
+│   │   └── storage.ts          chrome.storage 唯一封装，永不 reject，含配额重试 + LRU（339 行）
 │   │
 │   ├── features/               有状态业务逻辑
 │   │   ├── bootstrapExtract.ts 首屏 __NEXT_DATA__ 提取（118 行）
@@ -126,7 +126,7 @@ D:\edge-ai-sidebar\
 │
 ├── tests/
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
-│   └── unit/                   36 个测试文件，540 个用例
+│   └── unit/                   41 个测试文件，710 个用例
 │
 ├── scripts/
 │   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
@@ -238,6 +238,14 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 - 位置自动保存到 `chrome.storage.local`
 - 下次打开页面保持位置
 
+### 本地存储与配额
+
+`chrome.storage.local` 约 10MB，每个会话存一条完整消息快照（`edge-ai-sidebar:session:<uuid>`），无限累积会写满。三层防护：
+
+- **LRU 上限** — 只保留最新 50 条、共 6MB 以内的会话快照（百轮对话单快照可达 MB 级，字节预算才是真约束），超出的按 `lastSavedAt` 自动淘汰（重访该会话会从 DOM 重新提取）
+- **配额重试** — 写入命中 quota 时自动清理到 3MB / 最新 10 条并重试一次；文件夹索引、重命名、隐藏标记体积小且不可再生，永不淘汰
+- **可见反馈** — 面板 header 有存储占用圆点（🟢 <50% / 🟡 <80% / 🟠 <95% / 🔴 ≥95%，悬停看具体 MB）；彻底写失败时弹 toast 提示
+
 ---
 
 ## 自动化测试
@@ -255,7 +263,7 @@ npm run probe:check           # CI 用：探针与合同不同步则失败
 
 **当前状态**：
 
-- ✅ 36 个测试文件，540 个用例全部通过
+- ✅ 41 个测试文件，710 个用例全部通过
 - ✅ 整体覆盖率 94% 语句 / 85.2% 分支 / 95.5% 函数
 - ✅ 按目录棘轮阈值全部通过：全局（42/42/45/42）、`src/core/**`（99/90/100/100）、`src/platform/**`（90/86/81/92）
 - ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算（70 KB / gzip 25 KB）

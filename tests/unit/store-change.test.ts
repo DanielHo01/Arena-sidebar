@@ -167,6 +167,8 @@ describe("onStoreChange", () => {
 		subscribe(() => {
 			throw new Error("listener blew up");
 		});
-		await expect(conversationStore.saveToStorage()).resolves.toBeUndefined();
+		// Resolves true: the write landed, and the throwing listener neither
+		// rejected the save nor starved the others.
+		await expect(conversationStore.saveToStorage()).resolves.toBe(true);
 	});
 });

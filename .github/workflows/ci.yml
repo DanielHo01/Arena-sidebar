@@ -21,10 +21,11 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     env:
-      # Extension bundle budget, in bytes. The built bundle is 54 kB today and
-      # there is no reason for it to grow silently -- this is a real assertion,
+      # Extension bundle budget, in bytes. The built bundle was 68.5 kB on main
+      # before the #22/#23 storage work (+4 kB for quota retry + LRU eviction
+      # + full-storage toast + header quota dot) -- this is a real assertion,
       # not a summary line. Raise it only in a commit that explains why.
-      BUNDLE_BUDGET_BYTES: 70000
+      BUNDLE_BUDGET_BYTES: 75000
       BUNDLE_GZIP_BUDGET_BYTES: 25000
     steps:
       - name: Checkout

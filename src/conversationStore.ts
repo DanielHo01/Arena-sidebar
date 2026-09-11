@@ -15,7 +15,11 @@ import type {
 	SidebarRound,
 } from "./types";
 import { cachedElements, panel } from "./state";
-import { storageGet, storageSet } from "./platform/storage";
+import {
+	evictOldestSnapshots,
+	storageGet,
+	storageSetDetailed,
+} from "./platform/storage";
 import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
 import { computeRounds } from "./core/rounds";
 import { deletedMessageKeys, tombstoneKey } from "./rounds";
@@ -68,6 +72,21 @@ function emitStoreChange(): void {
 	}
 }
 
+// ─── Proactive snapshot trim ─────────────────────────────────────────────────────────
+//
+// saveToStorage runs on every settled mutation batch, so the count-cap scan
+// (a full get(null)) is throttled: at most one trim per minute per page load.
+
+let lastTrimAt = 0;
+const TRIM_THROTTLE_MS = 60_000;
+
+function scheduleSnapshotTrim(): void {
+	const now = Date.now();
+	if (now - lastTrimAt < TRIM_THROTTLE_MS) return;
+	lastTrimAt = now;
+	void evictOldestSnapshots();
+}
+
 // ─── Conversation store ─────────────────────────────────────────────────────────────
 
 export const conversationStore = {
@@ -90,20 +109,44 @@ export const conversationStore = {
 		this.lastOrigin = null;
 	},
 
-	/** Save current messages + rounds to chrome.storage.local (keyed by sessionId). */
-	async saveToStorage(): Promise<void> {
-		if (!this.sessionId || this.messages.length === 0) return;
+	/**
+	 * Save current messages + rounds to chrome.storage.local (keyed by
+	 * sessionId). Resolves true when the write landed.
+	 *
+	 * Storage hygiene (#22/#23): the write retries once past a quota error
+	 * after evicting the oldest snapshots, and each success schedules a
+	 * throttled trim (newest 50 snapshots within a 6MB byte budget — a
+	 * 100-round session snapshots at ~1MB, so bytes are the real guard).
+	 * Persisted messages
+	 * drop `domId`: anchor ids are per-page-load (cachedElements is
+	 * in-memory), so a stored domId can never rebind after a restart —
+	 * loadFromStorage calls bindDomAnchors() to rebuild them from the live
+	 * DOM instead. Full `content` IS kept: restore-after-restart must render
+	 * even when the DOM is gone, which an id/fingerprint-only payload could
+	 * not do.
+	 */
+	async saveToStorage(): Promise<boolean> {
+		if (!this.sessionId || this.messages.length === 0) return false;
 		const key = `edge-ai-sidebar:session:${this.sessionId}`;
 		const payload = {
-			messages: this.messages,
+			messages: this.messages.map(({ domId: _domId, ...rest }) => rest),
 			rounds: this.rounds,
 			lastSavedAt: Date.now(),
 			sessionId: this.sessionId,
+			// feeds the byte-budget half of evictOldestSnapshots without a
+			// re-measure pass; approximate (self-size excluded) by ~10 chars.
+			bytes: 0,
 		};
-		if (!(await storageSet(key, payload))) return;
+		payload.bytes = JSON.stringify(payload).length;
+		const result = await storageSetDetailed(key, payload, {
+			evictOnQuota: true,
+		});
+		if (!result.ok) return false;
 		// Subscribers (folders' session index) are notified only after the write
 		// actually landed, preserving the old ordering guarantee.
 		emitStoreChange();
+		scheduleSnapshotTrim();
+		return true;
 	},
 
 	/**

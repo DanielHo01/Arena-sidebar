@@ -7,7 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ensurePanelSkeleton, ensureStyles } from "../../src/ui/panel/skeleton";
+import {
+	ensurePanelSkeleton,
+	ensureStyles,
+	updateStorageDot,
+} from "../../src/ui/panel/skeleton";
+import { setStorageBackend } from "../../src/platform/storage";
 import { panel } from "../../src/state";
 import { exportConversation, summarizeRounds } from "../../src/ui/modals";
 
@@ -350,5 +355,120 @@ describe("the scan-older-history loop", () => {
 		tick();
 
 		expect(scrollBy).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("storage quota dot (#23)", () => {
+	let shadow: ShadowRoot;
+	let now: number;
+	// updateStorageDot throttles on module-level Date.now, shared across tests
+	// in this file — every test starts five minutes after the previous one so
+	// each gets exactly one fresh sample unless it advances time itself.
+	let dotClock = 0;
+
+	const MB = 1024 * 1024;
+
+	function useBackend(used: number, quota = 10 * MB) {
+		const getBytesInUse = vi.fn(async () => used);
+		setStorageBackend({
+			get: async () => ({}),
+			set: async () => {},
+			remove: async () => {},
+			getBytesInUse,
+			quotaBytes: quota,
+		});
+		return getBytesInUse;
+	}
+
+	function mountDot(): HTMLElement {
+		const dot = document.createElement("span");
+		dot.className = "storage-dot";
+		shadow.appendChild(dot);
+		return dot;
+	}
+
+	const flush = async () => {
+		for (let i = 0; i < 10; i++) await Promise.resolve();
+	};
+
+	let dateSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		document.body.innerHTML = "";
+		shadow = makeShadow();
+		dotClock += 300_000;
+		now = dotClock;
+		dateSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+	});
+
+	afterEach(() => {
+		dateSpy.mockRestore();
+		setStorageBackend(null);
+	});
+
+	it("the skeleton renders the dot first in the actions row", () => {
+		window.history.pushState({}, "", "/");
+		ensurePanelSkeleton(shadow, 0, 0, vi.fn());
+		const actions = shadow.querySelector(".header-actions")!;
+		const dot = actions.querySelector(".storage-dot");
+		expect(dot).not.toBeNull();
+		expect(actions.firstElementChild).toBe(dot);
+	});
+
+	it("does no work at all when the panel is not rendered", () => {
+		const getBytesInUse = useBackend(0);
+		updateStorageDot(shadow); // no .storage-dot in this shadow root
+		expect(getBytesInUse).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[1 * MB, "storage-dot", "10%"],
+		[6 * MB, "storage-dot warn", "60%"],
+		[8.5 * MB, "storage-dot high", "85%"],
+		[9.7 * MB, "storage-dot full", "97%"],
+	])("paints the level for %i bytes used", async (used, cls, pct) => {
+		useBackend(used);
+		const dot = mountDot();
+		updateStorageDot(shadow);
+		await flush();
+		expect(dot.className).toBe(cls);
+		expect(dot.getAttribute("title")).toContain(pct);
+	});
+
+	it("samples at most once a minute", async () => {
+		const getBytesInUse = useBackend(1 * MB);
+		const dot = mountDot();
+		updateStorageDot(shadow);
+		await flush();
+		expect(getBytesInUse).toHaveBeenCalledTimes(1);
+
+		// 59s later: throttled, the stale green dot stays.
+		now += 59_000;
+		updateStorageDot(shadow);
+		await flush();
+		expect(getBytesInUse).toHaveBeenCalledTimes(1);
+		expect(dot.className).toBe("storage-dot");
+
+		// Past the minute: re-samples.
+		now += 2000;
+		updateStorageDot(shadow);
+		await flush();
+		expect(getBytesInUse).toHaveBeenCalledTimes(2);
+	});
+
+	it("reports unavailable without usage data", async () => {
+		setStorageBackend(null);
+		const dot = mountDot();
+		updateStorageDot(shadow);
+		await flush();
+		expect(dot.getAttribute("title")).toBe("Storage usage: unavailable");
+	});
+
+	it("reports unavailable when the quota is zero", async () => {
+		useBackend(0, 0);
+		const dot = mountDot();
+		updateStorageDot(shadow);
+		await flush();
+		expect(dot.getAttribute("title")).toBe("Storage usage: unavailable");
 	});
 });
