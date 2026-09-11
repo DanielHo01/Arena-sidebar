@@ -115,7 +115,9 @@ export const conversationStore = {
 	 *
 	 * Storage hygiene (#22/#23): the write retries once past a quota error
 	 * after evicting the oldest snapshots, and each success schedules a
-	 * throttled trim to the newest MAX_SESSION_SNAPSHOTS. Persisted messages
+	 * throttled trim (newest 50 snapshots within a 6MB byte budget — a
+	 * 100-round session snapshots at ~1MB, so bytes are the real guard).
+	 * Persisted messages
 	 * drop `domId`: anchor ids are per-page-load (cachedElements is
 	 * in-memory), so a stored domId can never rebind after a restart —
 	 * loadFromStorage calls bindDomAnchors() to rebuild them from the live
@@ -131,7 +133,11 @@ export const conversationStore = {
 			rounds: this.rounds,
 			lastSavedAt: Date.now(),
 			sessionId: this.sessionId,
+			// feeds the byte-budget half of evictOldestSnapshots without a
+			// re-measure pass; approximate (self-size excluded) by ~10 chars.
+			bytes: 0,
 		};
+		payload.bytes = JSON.stringify(payload).length;
 		const result = await storageSetDetailed(key, payload, {
 			evictOnQuota: true,
 		});

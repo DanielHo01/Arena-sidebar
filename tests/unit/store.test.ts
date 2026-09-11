@@ -388,9 +388,16 @@ describe("saveToStorage persistence (#22/#23)", () => {
 
 			const payload = data.get("edge-ai-sidebar:session:s1") as {
 				messages: Array<{ domId?: string; content: string }>;
+				bytes: number;
 			};
 			expect(payload.messages[0].content).toBe("hello");
 			expect("domId" in payload.messages[0]).toBe(false);
+			// Recorded size feeds the byte-budget eviction; approximate
+			// (self-size excluded) within a few chars.
+			expect(typeof payload.bytes).toBe("number");
+			expect(
+				Math.abs(payload.bytes - JSON.stringify(payload).length),
+			).toBeLessThan(32);
 			// The live message is untouched — only the persisted copy slims.
 			expect(conversationStore.messages[0].domId).toBe("ais-7");
 		} finally {

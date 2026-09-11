@@ -167,7 +167,10 @@ export async function storageSetDetailed(
 		return { ok: true };
 	} catch (error) {
 		if (opts?.evictOnQuota && isQuotaError(error)) {
-			const evicted = await evictOldestSnapshots(QUOTA_EVICT_KEEP);
+			const evicted = await evictOldestSnapshots(
+				QUOTA_EVICT_KEEP,
+				QUOTA_EVICT_BYTES,
+			);
 			try {
 				await b.set({ [key]: value });
 				console.log(
@@ -229,10 +232,12 @@ export async function storageRemove(keys: string[]): Promise<boolean> {
 // folder index, hidden flags) starts failing — silently, per call. The two
 // guards:
 //
-//   1. Proactive count cap: after each snapshot save the store trims to
-//      MAX_SESSION_SNAPSHOTS newest (throttled; see conversationStore).
-//   2. Reactive quota retry: storageSetDetailed with evictOnQuota evicts down
-//      to QUOTA_EVICT_KEEP newest and retries once.
+//   1. Proactive trim: after each snapshot save the store keeps the newest
+//      MAX_SESSION_SNAPSHOTS within SNAPSHOT_BYTES_BUDGET (throttled; see
+//      conversationStore). The byte budget is the real guard — a 100-round
+//      session snapshots at ~1MB, so a count cap alone cannot bound the area.
+//   2. Reactive quota retry: storageSetDetailed with evictOnQuota evicts to
+//      the emergency budget and retries once.
 //
 // Only `edge-ai-sidebar:session:*` keys are ever evicted — the folder index,
 // renames, hidden flags and theme are small and irreplaceable, while a
@@ -246,16 +251,45 @@ export const SESSION_SNAPSHOT_PREFIX = "edge-ai-sidebar:session:";
 /** Proactive cap: newest N snapshots are kept, older ones trimmed. */
 export const MAX_SESSION_SNAPSHOTS = 50;
 
-/** Emergency floor: a quota retry keeps only the newest N snapshots. */
+/**
+ * Proactive byte budget for all snapshots combined. 6 of ~10MB: folders,
+ * hidden flags and headroom own the rest.
+ */
+export const SNAPSHOT_BYTES_BUDGET = 6 * 1024 * 1024;
+
+/** Emergency floor: a quota retry keeps at most the newest N snapshots. */
 export const QUOTA_EVICT_KEEP = 10;
 
+/** Emergency byte budget a quota retry evicts down to. */
+export const QUOTA_EVICT_BYTES = 3 * 1024 * 1024;
+
+/** Approximate serialized size of one stored snapshot value. */
+function snapshotBytes(value: unknown): number {
+	const recorded = (value as { bytes?: unknown })?.bytes;
+	if (typeof recorded === "number" && recorded >= 0) return recorded;
+	// Legacy payloads (written before `bytes` existed) are measured live.
+	// JSON length counts UTF-16 code units, chrome counts bytes — close
+	// enough for a budget with 40% headroom baked in.
+	try {
+		return JSON.stringify(value)?.length ?? 0;
+	} catch {
+		return 0;
+	}
+}
+
 /**
- * Delete the oldest session snapshots, keeping the newest `keepNewest`
- * (by payload lastSavedAt; payloads without one count as oldest).
+ * Delete the oldest session snapshots, keeping a newest-first window bounded
+ * by BOTH `keepNewest` count and `byteBudget` bytes (by payload lastSavedAt;
+ * payloads without one count as oldest). The single newest snapshot is always
+ * spared from the byte budget — evicting the session the user is in to satisfy
+ * an average cannot be right; if it alone exceeds quota the retry fails
+ * honestly and the UI toasts.
+ *
  * Resolves with the number of keys removed. Never rejects.
  */
 export async function evictOldestSnapshots(
 	keepNewest: number = MAX_SESSION_SNAPSHOTS,
+	byteBudget: number = SNAPSHOT_BYTES_BUDGET,
 ): Promise<number> {
 	const b = backend();
 	if (!b) return 0;
@@ -274,12 +308,27 @@ export async function evictOldestSnapshots(
 				typeof (v as { lastSavedAt?: unknown })?.lastSavedAt === "number"
 					? ((v as { lastSavedAt: number }).lastSavedAt ?? 0)
 					: 0,
+			bytes: snapshotBytes(v),
 		}))
 		.sort((a, b2) => a.lastSavedAt - b2.lastSavedAt);
-	if (snapshots.length <= keepNewest) return 0;
-	const victimKeys = snapshots
-		.slice(0, snapshots.length - keepNewest)
-		.map((s) => s.k);
+	// Newest-first: keep while under both caps. The first (newest) entry
+	// bypasses the byte budget (see docstring) but not the count gate, so
+	// keepNewest=0 still evicts everything.
+	let keptCount = 0;
+	let keptBytes = 0;
+	const victimKeys: string[] = [];
+	for (const s of [...snapshots].reverse()) {
+		if (
+			keptCount < keepNewest &&
+			(keptCount === 0 || keptBytes + s.bytes <= byteBudget)
+		) {
+			keptCount++;
+			keptBytes += s.bytes;
+		} else {
+			victimKeys.push(s.k);
+		}
+	}
+	if (victimKeys.length === 0) return 0;
 	try {
 		await b.remove(victimKeys);
 	} catch (error) {

@@ -12,8 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	MAX_SESSION_SNAPSHOTS,
+	QUOTA_EVICT_BYTES,
 	QUOTA_EVICT_KEEP,
 	SESSION_SNAPSHOT_PREFIX,
+	SNAPSHOT_BYTES_BUDGET,
 	evictOldestSnapshots,
 	getStorageUsage,
 	isQuotaError,
@@ -85,12 +87,14 @@ function seedSnapshots(
 	data: Map<string, unknown>,
 	count: number,
 	startAt = 0,
+	bytes?: number,
 ): void {
 	for (let i = 0; i < count; i++) {
 		data.set(snapKey(startAt + i), {
 			messages: [],
 			lastSavedAt: 1000 + startAt + i,
 			sessionId: `session-${startAt + i}`,
+			...(bytes === undefined ? {} : { bytes }),
 		});
 	}
 }
@@ -236,6 +240,67 @@ describe("evictOldestSnapshots", () => {
 		await expect(evictOldestSnapshots(0)).resolves.toBe(0);
 		expect(f.data.size).toBe(3);
 	});
+
+	it("evicts by byte budget even under the count cap", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		seedSnapshots(f.data, 5, 0, 1000);
+		// Newest-first within 2500 bytes: snap4 + snap3 fit, snap2 does not.
+		await expect(evictOldestSnapshots(50, 2500)).resolves.toBe(3);
+		expect([...f.data.keys()].sort()).toEqual([snapKey(3), snapKey(4)]);
+	});
+
+	it("the count cap still binds when bytes are small", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		seedSnapshots(f.data, 5, 0, 10);
+		await expect(evictOldestSnapshots(2, SNAPSHOT_BYTES_BUDGET)).resolves.toBe(
+			3,
+		);
+		expect([...f.data.keys()].sort()).toEqual([snapKey(3), snapKey(4)]);
+	});
+
+	it("spares the newest snapshot from the byte budget", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		seedSnapshots(f.data, 1, 0, 10 * 1024 * 1024);
+		// The session the user is in must survive even when it alone breaks
+		// the budget — the write retry then fails honestly and toasts.
+		await expect(evictOldestSnapshots(50, 10)).resolves.toBe(0);
+		expect(f.data.size).toBe(1);
+	});
+
+	it("measures legacy payloads without a bytes field live", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		f.data.set(snapKey(0), { lastSavedAt: 1, blob: "x".repeat(2000) });
+		f.data.set(snapKey(1), { lastSavedAt: 2, blob: "y" });
+		await expect(evictOldestSnapshots(50, 100)).resolves.toBe(1);
+		expect(f.data.has(snapKey(0))).toBe(false);
+		expect(f.data.has(snapKey(1))).toBe(true);
+	});
+
+	it("counts unmeasurable payloads as zero bytes", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		const circular: Record<string, unknown> = { lastSavedAt: 1 };
+		circular.self = circular; // JSON.stringify throws
+		f.data.set(snapKey(0), circular);
+		seedSnapshots(f.data, 1, 1, 100);
+		// Newest (100B) kept via the bypass; the circular older one measures
+		// 0 but still exceeds the budget on top of the 100.
+		await expect(evictOldestSnapshots(50, 50)).resolves.toBe(1);
+		expect(f.data.has(snapKey(0))).toBe(false);
+	});
+
+	it("counts an undefined payload as zero bytes", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		f.data.set(snapKey(0), undefined);
+		seedSnapshots(f.data, 1, 1, 100);
+		await expect(evictOldestSnapshots(50, 50)).resolves.toBe(1);
+		expect(f.data.has(snapKey(0))).toBe(false);
+	});
 });
 
 describe("storageSetDetailed", () => {
@@ -309,6 +374,22 @@ describe("storageSetDetailed", () => {
 		expect(f.data.size).toBe(QUOTA_EVICT_KEEP + 1);
 		expect(f.data.has("edge-ai-sidebar:session:new")).toBe(true);
 		expect(failures).toHaveLength(0);
+	});
+
+	it("the quota retry evicts to the emergency byte budget, not just count", async () => {
+		const f = fakeBackend({ quotaFailures: 1 });
+		setStorageBackend(f.backend);
+		// 12 snapshots at 1MB recorded bytes each: the count floor (10) would
+		// evict 2, but the 3MB budget keeps only the newest 3.
+		expect(QUOTA_EVICT_BYTES).toBe(3 * 1024 * 1024);
+		seedSnapshots(f.data, 12, 0, 1024 * 1024);
+		const result = await storageSetDetailed(
+			"edge-ai-sidebar:session:new",
+			{ messages: [] },
+			{ evictOnQuota: true },
+		);
+		expect(result).toEqual({ ok: true, evicted: 9 });
+		expect(f.data.size).toBe(3 + 1); // 3 survivors + the retried write
 	});
 
 	it("a quota that survives eviction reports quota with the evicted count", async () => {
