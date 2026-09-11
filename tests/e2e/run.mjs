@@ -718,6 +718,48 @@ step(
 	},
 );
 
+step(
+	"Issue #32: long prompts and 120px cards survive real browser extraction",
+	async (ctx) => {
+		const a = ctx.alpha;
+		await ctx.goto(a, `${ctx.url}/c/e2e-issue32`);
+		await assertPanelRounds(a, 3);
+
+		await a.waitFor("six narrow DOM messages", async () => {
+			const raw = await a.page.evaluate(
+				"JSON.stringify((function(){ var els = Array.from(document.querySelectorAll(\"main [class*='bg-surface-raised'], main [class*='bg-surface-primary']\")); return { count: els.length, widths: els.map(function(el){ return Math.round(el.getBoundingClientRect().width); }) }; })())",
+			);
+			const snapshot = JSON.parse(raw);
+			return snapshot.count === 6 &&
+				snapshot.widths.every((width) => width >= 100 && width < 200)
+				? true
+				: null;
+		});
+		const msgs = await hostAttr(a.page, "data-ai-sidebar-msgs");
+		if (msgs !== "6")
+			throw new Error(`expected six extracted messages, host reports ${msgs}`);
+	},
+);
+
+step(
+	"Issue #32: Session Library injects after the sidebar and container mount separately",
+	async (ctx) => {
+		const a = ctx.alpha;
+		await a.waitFor("late Session Library entry", async () => {
+			const raw = await a.page.evaluate(
+				"JSON.stringify({ sidebar: !!document.querySelector('[data-sidebar=\"sidebar\"]'), container: !!document.querySelector('[data-sidebar=\"sidebar\"] [data-side=\"container\"]'), entry: !!document.querySelector('[data-ai-sidebar-folder-entry]'), label: (document.querySelector('[data-ai-sidebar-folder-entry]') || {}).textContent || '' })",
+			);
+			const snapshot = JSON.parse(raw);
+			return snapshot.sidebar &&
+				snapshot.container &&
+				snapshot.entry &&
+				snapshot.label.includes("Session Library")
+				? true
+				: null;
+		});
+	},
+);
+
 // ─── Driver ───────────────────────────────────────────────────────────────────
 
 async function main() {
