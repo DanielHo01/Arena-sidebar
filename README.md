@@ -126,7 +126,7 @@ D:\edge-ai-sidebar\
 │
 ├── tests/
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
-│   └── unit/                   41 个测试文件，710 个用例
+│   └── unit/                   42 个测试文件，736 个用例
 │
 ├── scripts/
 │   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
@@ -245,6 +245,7 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 - **LRU 上限** — 只保留最新 50 条、共 6MB 以内的会话快照（百轮对话单快照可达 MB 级，字节预算才是真约束），超出的按 `lastSavedAt` 自动淘汰（重访该会话会从 DOM 重新提取）
 - **配额重试** — 写入命中 quota 时自动清理到 3MB / 最新 10 条并重试一次；文件夹索引、重命名、隐藏标记体积小且不可再生，永不淘汰
 - **可见反馈** — 面板 header 有存储占用圆点（🟢 <50% / 🟡 <80% / 🟠 <95% / 🔴 ≥95%，悬停看具体 MB）；彻底写失败时弹 toast 提示
+- **编辑 overlay 独立存** — 手改消息的修正量镜像到 `edge-ai-sidebar:edits:<uuid>` 小 key，不随快照淘汰；重访被清过的会话时按指纹自动贴回（保留最新 200 个会话）
 
 ---
 
@@ -263,7 +264,7 @@ npm run probe:check           # CI 用：探针与合同不同步则失败
 
 **当前状态**：
 
-- ✅ 41 个测试文件，710 个用例全部通过
+- ✅ 42 个测试文件，736 个用例全部通过
 - ✅ 整体覆盖率 94% 语句 / 85.2% 分支 / 95.5% 函数
 - ✅ 按目录棘轮阈值全部通过：全局（42/42/45/42）、`src/core/**`（99/90/100/100）、`src/platform/**`（90/86/81/92）
 - ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算（70 KB / gzip 25 KB）

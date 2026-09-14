@@ -48,6 +48,7 @@ import {
 import { setupHistoryContextMenu } from "./ui/contextMenu";
 import { setupHistoryTitles } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
+import { loadEditOverlays } from "./editOverlays";
 import { onStorageWriteFailed, storageGet } from "./platform/storage";
 import { showToast } from "./ui/toast";
 import { updateStorageDot } from "./ui/panel/skeleton";
@@ -86,10 +87,14 @@ async function rebuildForCurrentRoute(): Promise<void> {
 		await loadDeletedMessages(sessionId);
 		// The message record and the hidden-round flags are independent keys —
 		// restore them together before the first post-route render.
-		await Promise.all([
+		const [restored] = await Promise.all([
 			conversationStore.loadFromStorage(sessionId),
 			loadHiddenRounds(sessionId),
 		]);
+		// Snapshot miss (never saved, or LRU-evicted): the DOM re-extract
+		// below rebuilds plain messages, so preload the edit overlays — the
+		// merge re-attaches them from cache.
+		if (!restored) await loadEditOverlays(sessionId);
 	}
 	refreshStore({
 		bootstrap: extractBootstrapMessages(),

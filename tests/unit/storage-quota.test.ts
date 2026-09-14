@@ -10,12 +10,14 @@
 //
 // Plus getStorageUsage(), the header dot's data source.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EDIT_OVERLAY_PREFIX, MAX_EDIT_KEYS } from "../../src/editOverlays";
 import {
 	MAX_SESSION_SNAPSHOTS,
 	QUOTA_EVICT_BYTES,
 	QUOTA_EVICT_KEEP,
 	SESSION_SNAPSHOT_PREFIX,
 	SNAPSHOT_BYTES_BUDGET,
+	evictOldestKeys,
 	evictOldestSnapshots,
 	getStorageUsage,
 	isQuotaError,
@@ -300,6 +302,54 @@ describe("evictOldestSnapshots", () => {
 		seedSnapshots(f.data, 1, 1, 100);
 		await expect(evictOldestSnapshots(50, 50)).resolves.toBe(1);
 		expect(f.data.has(snapKey(0))).toBe(false);
+	});
+});
+
+describe("evictOldestKeys (edit-overlay mirrors)", () => {
+	function editKey(i: number): string {
+		return `${EDIT_OVERLAY_PREFIX}session-${i}`;
+	}
+
+	afterEach(() => setStorageBackend(null));
+
+	it("orders overlay mirrors by updatedAt, oldest-first", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		f.data.set(editKey(0), { edits: [], updatedAt: 30 });
+		f.data.set(editKey(1), { edits: [], updatedAt: 10 });
+		f.data.set(editKey(2), { edits: [], updatedAt: 20 });
+		await expect(
+			evictOldestKeys(EDIT_OVERLAY_PREFIX, 2, Number.POSITIVE_INFINITY),
+		).resolves.toBe(1);
+		expect(f.data.has(editKey(1))).toBe(false);
+		expect(f.data.has(editKey(0))).toBe(true);
+		expect(f.data.has(editKey(2))).toBe(true);
+	});
+
+	it("caps mirrors at MAX_EDIT_KEYS, count-only", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		for (let i = 0; i < MAX_EDIT_KEYS + 5; i++) {
+			f.data.set(editKey(i), { edits: [], updatedAt: i });
+		}
+		await expect(
+			evictOldestKeys(
+				EDIT_OVERLAY_PREFIX,
+				MAX_EDIT_KEYS,
+				Number.POSITIVE_INFINITY,
+			),
+		).resolves.toBe(5);
+		expect(f.data.size).toBe(MAX_EDIT_KEYS);
+	});
+
+	it("snapshot eviction never touches overlay mirrors", async () => {
+		const f = fakeBackend();
+		setStorageBackend(f.backend);
+		f.data.set(editKey(0), { edits: [], updatedAt: 1 });
+		seedSnapshots(f.data, 2);
+		// keepNewest=0 evicts every snapshot — the mirror must survive.
+		await expect(evictOldestSnapshots(0)).resolves.toBe(2);
+		expect(f.data.has(editKey(0))).toBe(true);
 	});
 });
 
