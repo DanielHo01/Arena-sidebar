@@ -10,15 +10,11 @@ import {
 	createFolder,
 	foldersState,
 	INBOX_ID,
+	SESSION_META_PREFIX,
 } from "../../src/features/sessions";
-import type { SessionFolder, SessionMeta } from "../../src/types";
+import type { SessionMeta } from "../../src/types";
 
-type StorageChange = {
-	newValue?: {
-		folders?: SessionFolder[];
-		sessions?: [string, SessionMeta][];
-	};
-};
+type StorageChange = { newValue?: unknown };
 
 type StorageListener = (
 	changes: Record<string, StorageChange>,
@@ -65,13 +61,21 @@ function installChromeStorage(): void {
 	});
 }
 
-function emitFoldersChange(
-	newValue: StorageChange["newValue"],
+function emitStorageChange(
+	changes: Record<string, StorageChange>,
 	areaName = "local",
 ): void {
 	for (const listener of storageListeners) {
-		listener({ "edge-ai-sidebar:folders": { newValue } }, areaName);
+		listener(changes, areaName);
 	}
+}
+
+/** Emit a change to one per-session meta key. */
+function emitSessionMetaChange(
+	sessionId: string,
+	newValue: SessionMeta | undefined,
+): void {
+	emitStorageChange({ [SESSION_META_PREFIX + sessionId]: { newValue } });
 }
 
 function track(disposer: () => void): void {
@@ -283,7 +287,7 @@ describe("Session Library toggle and rendering", () => {
 });
 
 describe("folders storage sync", () => {
-	it("updates state and re-renders an open section", () => {
+	it("applies a folder-list change and a per-session meta change, then re-renders", () => {
 		foldersState.sessions.set("local-session", session("local-session"));
 		const { wrapper } = openLibrary();
 		const section = librarySection(wrapper);
@@ -300,54 +304,71 @@ describe("folders storage sync", () => {
 			customTitle: "Remote title",
 		});
 
-		emitFoldersChange({
-			folders: [nextFolder],
-			sessions: [["remote-session", nextSession]],
+		emitStorageChange({
+			"edge-ai-sidebar:folders": { newValue: [nextFolder] },
+			[SESSION_META_PREFIX + "remote-session"]: { newValue: nextSession },
 		});
 
 		expect(foldersState.folders).toEqual([nextFolder]);
 		expect(foldersState.sessions.get("remote-session")).toEqual(nextSession);
-		expect(section.textContent).toContain("No sessions in this folder");
+		// Unlike the old whole-index replace, a session not named in the change
+		// survives — the active folder still shows the local session.
+		expect(foldersState.sessions.get("local-session")).toEqual(
+			session("local-session"),
+		);
+		expect(section.textContent).toContain("local-session");
 	});
 
-	it("keeps existing folders and sessions when fields are absent", () => {
-		const existingFolder = foldersState.folders[0]!;
-		const existingSession = session("local");
-		foldersState.sessions.set("local", existingSession);
+	it("a remote rename applies only the changed session, keeping others intact", () => {
+		// The per-session guarantee: a change to one session's key must not
+		// rebuild the whole index, so an unrelated session stays as-is.
+		const localSession = session("local");
+		foldersState.sessions.set("local", localSession);
 		track(setupFoldersStorageSync());
 
-		emitFoldersChange({});
+		emitSessionMetaChange("aaa", session("aaa", { customTitle: "New title" }));
+
+		expect(foldersState.sessions.get("aaa")?.customTitle).toBe("New title");
+		expect(foldersState.sessions.get("local")).toEqual(localSession);
+	});
+
+	it("deletes a session from memory when its key is removed remotely", () => {
+		foldersState.sessions.set("aaa", session("aaa"));
+		track(setupFoldersStorageSync());
+
+		emitSessionMetaChange("aaa", undefined);
+
+		expect(foldersState.sessions.has("aaa")).toBe(false);
+	});
+
+	it("keeps existing folders when the folders change has no value", () => {
+		const existingFolder = foldersState.folders[0]!;
+		track(setupFoldersStorageSync());
+
+		emitStorageChange({ "edge-ai-sidebar:folders": { newValue: undefined } });
 
 		expect(foldersState.folders).toEqual([
 			existingFolder,
 			foldersState.folders[1],
 		]);
-		expect(foldersState.sessions.get("local")).toEqual(existingSession);
 	});
 
-	it("ignores a storage change without a new value", () => {
-		const originalFolders = foldersState.folders;
+	it("does not re-render a closed section and disposer unregisters both listeners", () => {
 		track(setupFoldersStorageSync());
-
-		emitFoldersChange(undefined);
-
-		expect(foldersState.folders).toBe(originalFolders);
-	});
-
-	it("does not re-render a closed section and disposer unregisters the listener", () => {
-		track(setupFoldersStorageSync());
-		expect(storageListeners).toHaveLength(1);
+		expect(storageListeners).toHaveLength(2);
 
 		const original = document.body.innerHTML;
-		emitFoldersChange({
-			folders: [
-				{
-					id: "replacement",
-					name: "Replacement",
-					createdAt: 3,
-					updatedAt: 3,
-				},
-			],
+		emitStorageChange({
+			"edge-ai-sidebar:folders": {
+				newValue: [
+					{
+						id: "replacement",
+						name: "Replacement",
+						createdAt: 3,
+						updatedAt: 3,
+					},
+				],
+			},
 		});
 		expect(document.body.innerHTML).toBe(original);
 
@@ -356,23 +377,19 @@ describe("folders storage sync", () => {
 	});
 
 	it("repaints history-link titles on a remote rename (#11)", () => {
-		// The full cross-tab rename loop: tab A writes FOLDERS_KEY, tab B's
-		// memory reloads — and B's visible history links must follow without
-		// waiting for the next DOM mutation on an idle page.
+		// The full cross-tab rename loop: tab A writes the session-meta key,
+		// tab B's memory reloads — and B's visible history links must follow
+		// without waiting for the next DOM mutation on an idle page.
 		document.body.insertAdjacentHTML(
 			"beforeend",
 			'<a href="/c/aaa"><span>Old title</span></a>',
 		);
 		track(setupFoldersStorageSync());
 
-		emitFoldersChange({
-			sessions: [
-				[
-					"aaa",
-					session("aaa", { title: "Arena title", customTitle: "New title" }),
-				],
-			],
-		});
+		emitSessionMetaChange(
+			"aaa",
+			session("aaa", { title: "Arena title", customTitle: "New title" }),
+		);
 
 		const link = document.body.querySelector('a[href="/c/aaa"]')!;
 		expect(link.querySelector("span")!.textContent).toBe("New title");

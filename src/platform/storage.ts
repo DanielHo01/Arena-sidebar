@@ -386,3 +386,29 @@ export function onStorageChanged(
 	chrome.storage.onChanged.addListener(listener);
 	return () => chrome.storage.onChanged.removeListener(listener);
 }
+
+/**
+ * Subscribe to writes of every key starting with `prefix` in the local area.
+ * The handler receives the change and the full key (so callers can derive the
+ * per-key identifier, e.g. a session id after SESSION_META_PREFIX). Returns a
+ * Disposer; the caller owns teardown.
+ */
+export function onStorageChangedPrefix(
+	prefix: string,
+	handler: (change: unknown, key: string) => void,
+): Disposer {
+	if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+		return () => {};
+	}
+	const listener = (
+		changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+		areaName: string,
+	) => {
+		if (areaName !== "local") return;
+		for (const [key, change] of Object.entries(changes)) {
+			if (key.startsWith(prefix)) handler(change, key);
+		}
+	};
+	chrome.storage.onChanged.addListener(listener);
+	return () => chrome.storage.onChanged.removeListener(listener);
+}

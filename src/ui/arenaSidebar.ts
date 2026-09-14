@@ -9,7 +9,7 @@ import type { Disposer, SessionFolder, SessionMeta } from "../types";
 import { resolveQuickNavContainer } from "../platform/arenaDom";
 import { h } from "./dom";
 import { ASL } from "./styles/arenaSidebar";
-import { onStorageChanged } from "../platform/storage";
+import { onStorageChanged, onStorageChangedPrefix } from "../platform/storage";
 import { setupHistoryTitles } from "../historyTitles";
 import { resolveSessionTitle } from "../titleResolver";
 import {
@@ -17,6 +17,7 @@ import {
 	FOLDERS_KEY,
 	foldersState,
 	getSessionsInFolder,
+	SESSION_META_PREFIX,
 } from "../features/sessions";
 
 // ─── Arena DOM Integration ───────────────────────────────────────────────────────────────
@@ -125,25 +126,12 @@ export function toggleArenaSessionLibrarySection(): void {
  * Call once from content.ts bootstrap.
  */
 export function setupFoldersStorageSync(): Disposer {
-	return onStorageChanged(FOLDERS_KEY, (change) => {
-		const { newValue } = change as {
-			newValue?: {
-				folders: SessionFolder[];
-				sessions: [string, SessionMeta][];
-			};
-		};
-		if (!newValue) return;
-		foldersState.folders = newValue.folders ?? foldersState.folders;
-		if (newValue.sessions) {
-			foldersState.sessions = new Map(newValue.sessions);
-		}
-		// #11: repaint history-link titles at once. Memory alone is not
-		// enough — on an idle tab the next DOM mutation (the usual restore
-		// trigger) may be minutes away, so a remote rename would sit
-		// invisible. The restore is idempotent: links whose text already
-		// matches are read, not rewritten.
+	// #11: repaint history-link titles at once. Memory alone is not enough —
+	// on an idle tab the next DOM mutation (the usual restore trigger) may be
+	// minutes away, so a remote rename would sit invisible. The restore is
+	// idempotent: links whose text already matches are read, not rewritten.
+	const repaint = (): void => {
 		setupHistoryTitles();
-		// Re-render if section is open
 		if (librarySectionOpen) {
 			const container = resolveQuickNavContainer();
 			const section = container?.querySelector<HTMLElement>(
@@ -151,7 +139,38 @@ export function setupFoldersStorageSync(): Disposer {
 			);
 			if (section) renderArenaSessionLibrarySection(section);
 		}
-	});
+	};
+
+	const disposers: Disposer[] = [];
+
+	// The folder list (the one shared collection).
+	disposers.push(
+		onStorageChanged(FOLDERS_KEY, (change) => {
+			const next = (change as { newValue?: unknown } | undefined)?.newValue;
+			if (Array.isArray(next)) foldersState.folders = next as SessionFolder[];
+			repaint();
+		}),
+	);
+
+	// Per-session metadata. A remote rename/write lands here as one key, so
+	// concurrent changes to different sessions no longer overwrite each other.
+	disposers.push(
+		onStorageChangedPrefix(SESSION_META_PREFIX, (change, key) => {
+			const sessionId = key.slice(SESSION_META_PREFIX.length);
+			if (!sessionId) return;
+			const next = (change as { newValue?: unknown } | undefined)?.newValue;
+			if (next && typeof next === "object") {
+				foldersState.sessions.set(sessionId, next as SessionMeta);
+			} else {
+				foldersState.sessions.delete(sessionId);
+			}
+			repaint();
+		}),
+	);
+
+	return () => {
+		for (const dispose of disposers) dispose();
+	};
 }
 
 /**
