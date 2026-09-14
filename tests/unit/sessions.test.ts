@@ -8,6 +8,7 @@ import {
 	getSessionsInFolder,
 	initFolders,
 	migrateHistoryTitles,
+	sessionMetaKey,
 	setSessionCustomTitle,
 	setupSessionMetaSync,
 	upsertSessionMetaFromStore,
@@ -114,7 +115,7 @@ describe("foldersState and session CRUD", () => {
 		expect(foldersState.visible).toBe(false);
 	});
 
-	it("adds a new session with defaults and persists the index", () => {
+	it("adds a new session with defaults and persists it to its own key", async () => {
 		vi.spyOn(Date, "now").mockReturnValue(100);
 
 		addSessionToFolder("s1", "", "folder-1");
@@ -127,10 +128,8 @@ describe("foldersState and session CRUD", () => {
 			createdAt: 100,
 			updatedAt: 100,
 		});
-		expect(storage.data.get(FOLDERS_KEY)).toEqual({
-			folders: foldersState.folders,
-			sessions: [["s1", saved]],
-		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(storage.data.get(sessionMetaKey("s1"))).toEqual(saved);
 	});
 
 	it("updates an existing session without losing its custom title or creation time", () => {
@@ -155,7 +154,7 @@ describe("foldersState and session CRUD", () => {
 		});
 	});
 
-	it("rejects blank folder names and truncates long valid names", () => {
+	it("rejects blank folder names and truncates long valid names", async () => {
 		expect(createFolder("   ")).toBeNull();
 		expect(foldersState.folders).toHaveLength(2);
 
@@ -170,6 +169,7 @@ describe("foldersState and session CRUD", () => {
 		expect(created!.name).toHaveLength(40);
 		expect(created!.createdAt).toBe(300);
 		expect(foldersState.folders).toContainEqual(created);
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(storage.calls.set).toHaveLength(1);
 	});
 
@@ -244,7 +244,19 @@ describe("title writes and loading", () => {
 		});
 	});
 
-	it("loads persisted folders and sessions", async () => {
+	it("loads persisted folders and per-session metadata", async () => {
+		const savedFolder = folder({ id: "saved", name: "Saved" });
+		const savedMeta = meta({ sessionId: "saved-session", folderId: "saved" });
+		storage.data.set(FOLDERS_KEY, [savedFolder]);
+		storage.data.set(sessionMetaKey("saved-session"), savedMeta);
+
+		await initFolders();
+
+		expect(foldersState.folders).toEqual([savedFolder]);
+		expect(foldersState.sessions.get("saved-session")).toEqual(savedMeta);
+	});
+
+	it("migrates the legacy combined index into per-session keys", async () => {
 		const savedFolder = folder({ id: "saved", name: "Saved" });
 		const savedMeta = meta({ sessionId: "saved-session", folderId: "saved" });
 		storage.data.set(FOLDERS_KEY, {
@@ -253,14 +265,33 @@ describe("title writes and loading", () => {
 		});
 
 		await initFolders();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(foldersState.folders).toEqual([savedFolder]);
 		expect(foldersState.sessions.get("saved-session")).toEqual(savedMeta);
+		// The combined value is rewritten to the new array shape, and each
+		// session gets its own key.
+		expect(storage.data.get(FOLDERS_KEY)).toEqual([savedFolder]);
+		expect(storage.data.get(sessionMetaKey("saved-session"))).toEqual(
+			savedMeta,
+		);
 	});
 
-	it("keeps defaults when persisted collections are empty", async () => {
+	it("migrates an empty legacy index and keeps defaults", async () => {
 		storage.data.set(FOLDERS_KEY, { folders: [], sessions: [] });
 
+		await initFolders();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(foldersState.folders.map((item) => item.id)).toEqual([
+			"inbox",
+			"archive",
+		]);
+		expect(foldersState.sessions.size).toBe(0);
+		expect(storage.data.get(FOLDERS_KEY)).toEqual(foldersState.folders);
+	});
+
+	it("keeps defaults when nothing is persisted", async () => {
 		await initFolders();
 
 		expect(foldersState.folders.map((item) => item.id)).toEqual([
@@ -294,6 +325,132 @@ describe("title writes and loading", () => {
 			updatedAt: 500,
 			url: "https://arena.ai/c/s1",
 		});
+	});
+});
+
+describe("concurrent write ordering", () => {
+	// A backend whose set() resolves only when we say so, so a test can hold
+	// two writes in flight and complete them out of order — the interleaving
+	// that used to let a pre-rename snapshot overwrite a rename.
+	function deferredBackend() {
+		const data = new Map<string, unknown>();
+		const pending: Array<() => void> = [];
+		const backend: StorageBackend = {
+			get: async (keys) => {
+				if (keys === null) return Object.fromEntries(data);
+				const list = Array.isArray(keys) ? keys : [keys];
+				const result: Record<string, unknown> = {};
+				for (const key of list) if (data.has(key)) result[key] = data.get(key);
+				return result;
+			},
+			set: async (items) => {
+				await new Promise<void>((resolve) => pending.push(resolve));
+				for (const [key, value] of Object.entries(items)) data.set(key, value);
+			},
+			remove: async (keys) => {
+				for (const key of Array.isArray(keys) ? keys : [keys]) data.delete(key);
+			},
+		};
+		return { backend, data, pending };
+	}
+
+	/**
+	 * Complete every queued write, newest first. Newest-first is the exact
+	 * completion order that broke renames: a store upsert snapshotted *before*
+	 * the rename resolves *after* it, so its stale (no-custom-title) map lands
+	 * last. Serialized writes can only have one in flight at a time, so the
+	 * order cannot be inverted and the latest state always wins.
+	 */
+	async function flushNewestFirst(pending: Array<() => void>): Promise<void> {
+		let guard = 0;
+		for (;;) {
+			// Let queued write callbacks run and register their set() promise
+			// before we look for pending writes.
+			await new Promise((r) => setTimeout(r, 0));
+			if (pending.length === 0) break;
+			pending.pop()!();
+			if (++guard > 100) throw new Error("write chain did not settle");
+		}
+	}
+
+	function persistedTitle(
+		data: Map<string, unknown>,
+		sessionId: string,
+	): string | undefined {
+		const stored = data.get(sessionMetaKey(sessionId)) as
+			SessionMeta | undefined;
+		return stored?.customTitle;
+	}
+
+	it("a rename survives a store upsert that was snapshotted first", async () => {
+		const db = deferredBackend();
+		setStorageBackend(db.backend);
+
+		// Upsert fires first (as on a successful conversation save), then the
+		// user renames — both before either write resolves.
+		upsertSessionMetaFromStore("s1", "Original", 2, 3, "https://arena.ai/c/s1");
+		setSessionCustomTitle("s1", "  New name  ");
+
+		await flushNewestFirst(db.pending);
+
+		// No matter the completion order, the newest state wins.
+		expect(persistedTitle(db.data, "s1")).toBe("New name");
+		expect(foldersState.sessions.get("s1")?.customTitle).toBe("New name");
+	});
+
+	it("keeps the rename when a rename is followed by a store upsert", async () => {
+		const db = deferredBackend();
+		setStorageBackend(db.backend);
+
+		setSessionCustomTitle("s1", "  New name  ");
+		upsertSessionMetaFromStore("s1", "Original", 2, 3, "https://arena.ai/c/s1");
+
+		await flushNewestFirst(db.pending);
+
+		expect(persistedTitle(db.data, "s1")).toBe("New name");
+		expect(foldersState.sessions.get("s1")?.customTitle).toBe("New name");
+	});
+
+	it("renames of DIFFERENT sessions never overwrite each other", async () => {
+		// The lost-update this refactor removes: the old combined index wrote
+		// the whole map, so renaming session A in one tab while renaming
+		// session B in another dropped whichever write landed first. Per-session
+		// keys make the two writes independent.
+		const db = deferredBackend();
+		setStorageBackend(db.backend);
+
+		setSessionCustomTitle("a", "  Alpha  ");
+		setSessionCustomTitle("b", "  Beta  ");
+
+		await flushNewestFirst(db.pending);
+
+		expect(persistedTitle(db.data, "a")).toBe("Alpha");
+		expect(persistedTitle(db.data, "b")).toBe("Beta");
+	});
+});
+
+describe("persisting before the index has loaded", () => {
+	it("a store upsert before initFolders cannot clobber other sessions", async () => {
+		// Seed another session's custom title under its own key.
+		storage.data.set(
+			sessionMetaKey("other"),
+			meta({ sessionId: "other", customTitle: "Keep me" }),
+		);
+
+		// The store sync fires before initFolders resolves (content.ts starts
+		// both at bootstrap). It writes only its own session's key, so the
+		// seeded session is untouched regardless of ordering.
+		upsertSessionMetaFromStore("s1", "New", 1, 1, "https://arena.ai/c/s1");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(storage.data.get(sessionMetaKey("other"))).toEqual(
+			meta({ sessionId: "other", customTitle: "Keep me" }),
+		);
+
+		await initFolders();
+		expect(foldersState.sessions.get("other")?.customTitle).toBe("Keep me");
+		expect(foldersState.sessions.get("s1")?.title).toBe("New");
 	});
 });
 

@@ -11,7 +11,6 @@ import type { Disposer, SessionFolder, SessionMeta } from "../types";
 import { onStoreChange } from "../conversationStore";
 import {
 	storageAvailable,
-	storageGet,
 	storageGetAll,
 	storageRemove,
 	storageSetDetailed,
@@ -43,32 +42,109 @@ export const foldersState = {
 		this.sessions.clear();
 		this.activeFolderId = INBOX_ID;
 		this.visible = false;
+		// Drop any queued folder-index write so a reloaded/test-reset context
+		// does not chain its first write behind a stale, unrelated snapshot.
+		foldersWriteChain = Promise.resolve();
 	},
 };
 
-// ─── Storage key ────────────────────────────────────────────────────────────────────
+// ─── Storage keys ────────────────────────────────────────────────────────────────────
 
+/** The folder list lives under this one key. */
 export const FOLDERS_KEY = "edge-ai-sidebar:folders";
 
-function saveToStorage() {
-	// #22: the folder index is small but irreplaceable — when the area is
-	// full, evict old session snapshots (re-derivable) instead of dropping
-	// the user's folders/renames.
-	void storageSetDetailed(
-		FOLDERS_KEY,
-		{
-			folders: foldersState.folders,
-			sessions: Array.from(foldersState.sessions.entries()),
-		},
-		{ evictOnQuota: true },
-	);
+/**
+ * Prefix for per-session metadata keys. Each session's metadata lives under
+ * its OWN key (prefix + sessionId) instead of inside one combined index.
+ *
+ * The combined design had a lost-update bug: the whole `{ folders, sessions }`
+ * index was rewritten as one value, so two tabs renaming DIFFERENT sessions at
+ * the same time clobbered each other (the last whole-index write won, dropping
+ * the other tab's rename). Per-session keys make concurrent renames of
+ * different sessions independent — they write different keys, so nothing is
+ * lost. Same-session writes stay ordered by the write chain below.
+ *
+ * The prefix must NOT collide with SESSION_SNAPSHOT_PREFIX
+ * ("edge-ai-sidebar:session:"), because quota eviction deletes every key that
+ * starts with the snapshot prefix — renames are irreplaceable and must never
+ * be evicted. "session-meta" does not match that prefix.
+ */
+export const SESSION_META_PREFIX = "edge-ai-sidebar:session-meta:";
+
+/** The storage key holding one session's metadata. */
+export function sessionMetaKey(sessionId: string): string {
+	return SESSION_META_PREFIX + sessionId;
+}
+
+// Folder/session writes are serialized through this chain, and the state is
+// re-read when the write actually runs rather than when it is scheduled. That
+// ordering matters for the SAME session: a rename (setSessionCustomTitle) and
+// a store upsert (upsertSessionMetaFromStore) can both fire within the same
+// tick, and each used to snapshot the value synchronously before firing an
+// un-ordered async write. A pre-rename snapshot could then resolve after the
+// rename's write and land stale. Chaining the writes and reading at write time
+// makes that unrepresentable: the last write always carries the newest state.
+let foldersWriteChain: Promise<unknown> = Promise.resolve();
+
+/** Persist the folder list (the one shared collection). */
+function saveFolders(): void {
+	foldersWriteChain = foldersWriteChain.then(async () => {
+		// #22: folders are small but irreplaceable — when the area is full,
+		// evict old session snapshots (re-derivable) instead of dropping them.
+		await storageSetDetailed(FOLDERS_KEY, foldersState.folders, {
+			evictOnQuota: true,
+		});
+	});
+}
+
+/** Persist one session's metadata to its own key. */
+function saveSessionMeta(sessionId: string): void {
+	foldersWriteChain = foldersWriteChain.then(async () => {
+		const meta = foldersState.sessions.get(sessionId);
+		if (!meta) return;
+		await storageSetDetailed(sessionMetaKey(sessionId), meta, {
+			evictOnQuota: true,
+		});
+	});
 }
 
 async function loadFromStorage(): Promise<void> {
-	const data = (await storageGet(FOLDERS_KEY)) as
-		{ folders: SessionFolder[]; sessions: [string, SessionMeta][] } | undefined;
-	if (data?.folders?.length) foldersState.folders = data.folders;
-	if (data?.sessions?.length) foldersState.sessions = new Map(data.sessions);
+	const all = await storageGetAll();
+
+	// One-time migration from the combined `{ folders, sessions }` format the
+	// index used to live in, under this same FOLDERS_KEY. Split it into the
+	// folder list plus per-session meta keys. Idempotent: once migrated the
+	// folders value is an array, so this branch is skipped on later loads.
+	const legacy = all[FOLDERS_KEY] as
+		| SessionFolder[]
+		| { folders?: SessionFolder[]; sessions?: [string, SessionMeta][] }
+		| undefined;
+	if (legacy && !Array.isArray(legacy) && typeof legacy === "object") {
+		if (legacy.folders?.length) foldersState.folders = legacy.folders;
+		for (const [sid, meta] of legacy.sessions ?? []) {
+			if (!sid) continue;
+			foldersState.sessions.set(sid, meta);
+			void storageSetDetailed(sessionMetaKey(sid), meta, {
+				evictOnQuota: true,
+			});
+		}
+		void storageSetDetailed(FOLDERS_KEY, foldersState.folders, {
+			evictOnQuota: true,
+		});
+	} else if (Array.isArray(legacy) && legacy.length) {
+		foldersState.folders = legacy;
+	}
+
+	// Load every per-session meta key. Merge (set) rather than replace, so a
+	// session upserted into memory while storageGetAll was in flight is not
+	// dropped by the load.
+	for (const [key, value] of Object.entries(all)) {
+		if (!key.startsWith(SESSION_META_PREFIX)) continue;
+		const sid = key.slice(SESSION_META_PREFIX.length);
+		if (sid && value && typeof value === "object") {
+			foldersState.sessions.set(sid, value as SessionMeta);
+		}
+	}
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────────────
@@ -88,7 +164,7 @@ export function addSessionToFolder(
 		createdAt: existing?.createdAt ?? now,
 		updatedAt: now,
 	});
-	saveToStorage();
+	saveSessionMeta(sessionId);
 }
 
 export function createFolder(name: string): SessionFolder | null {
@@ -101,7 +177,7 @@ export function createFolder(name: string): SessionFolder | null {
 		updatedAt: Date.now(),
 	};
 	foldersState.folders.push(folder);
-	saveToStorage();
+	saveFolders();
 	return folder;
 }
 
@@ -139,7 +215,7 @@ export function setSessionCustomTitle(
 		updatedAt: now,
 		url: existing?.url,
 	});
-	saveToStorage();
+	saveSessionMeta(sessionId);
 }
 
 /** Call once from content.ts bootstrap to load persisted folders from storage. */
@@ -171,7 +247,10 @@ export function upsertSessionMetaFromStore(
 		updatedAt: now,
 		url,
 	});
-	saveToStorage();
+	// Per-session key: writing before initFolders() has finished is safe — this
+	// only touches one session's key, so it cannot erase the other sessions the
+	// load is about to read back.
+	saveSessionMeta(sessionId);
 }
 
 /**

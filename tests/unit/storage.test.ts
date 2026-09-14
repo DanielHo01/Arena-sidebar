@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	onStorageChanged,
+	onStorageChangedPrefix,
 	setStorageBackend,
 	storageAvailable,
 	storageGet,
@@ -209,5 +210,78 @@ describe("onStorageChanged", () => {
 	it("does not throw when chrome.storage.onChanged is absent", () => {
 		vi.stubGlobal("chrome", { storage: { local: fakeBackend().backend } });
 		expect(() => onStorageChanged("k", () => {})).not.toThrow();
+	});
+});
+
+describe("onStorageChangedPrefix", () => {
+	let listeners: Array<(changes: unknown, area: string) => void>;
+	let disposed: number;
+
+	beforeEach(() => {
+		listeners = [];
+		disposed = 0;
+		const backend = fakeBackend().backend;
+		setStorageBackend(backend);
+		vi.stubGlobal("chrome", {
+			storage: {
+				local: backend,
+				onChanged: {
+					addListener: (cb: (c: unknown, a: string) => void) => {
+						listeners.push(cb);
+					},
+					removeListener: () => {
+						disposed++;
+					},
+				},
+			},
+		});
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		setStorageBackend(null);
+	});
+
+	it("fires for every key under the prefix, with the key itself", () => {
+		const seen: Array<[unknown, string]> = [];
+		onStorageChangedPrefix("edge-ai-sidebar:session-meta:", (change, key) =>
+			seen.push([change, key]),
+		);
+		for (const cb of listeners)
+			cb(
+				{
+					"edge-ai-sidebar:session-meta:a": { newValue: 1 },
+					"edge-ai-sidebar:session-meta:b": { newValue: 2 },
+					"edge-ai-sidebar:folders": { newValue: 3 },
+				},
+				"local",
+			);
+		expect(seen).toEqual([
+			[{ newValue: 1 }, "edge-ai-sidebar:session-meta:a"],
+			[{ newValue: 2 }, "edge-ai-sidebar:session-meta:b"],
+		]);
+	});
+
+	it("ignores keys outside the prefix and other storage areas", () => {
+		const seen: unknown[] = [];
+		onStorageChangedPrefix("edge-ai-sidebar:session-meta:", (change) =>
+			seen.push(change),
+		);
+		for (const cb of listeners) cb({ other: { newValue: 1 } }, "local");
+		for (const cb of listeners)
+			cb({ "edge-ai-sidebar:session-meta:a": { newValue: 2 } }, "sync");
+		expect(seen).toHaveLength(0);
+	});
+
+	it("returns a Disposer that removes the listener", () => {
+		const dispose = onStorageChangedPrefix("p:", () => {});
+		expect(listeners).toHaveLength(1);
+		dispose();
+		expect(disposed).toBe(1);
+	});
+
+	it("does not throw when chrome.storage.onChanged is absent", () => {
+		vi.stubGlobal("chrome", { storage: { local: fakeBackend().backend } });
+		expect(() => onStorageChangedPrefix("p:", () => {})).not.toThrow();
 	});
 });
