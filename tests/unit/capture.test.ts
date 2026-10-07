@@ -4,11 +4,14 @@
 // document.documentElement.dataset from the MAIN world, then turns completed
 // request/response pairs into canonical messages. None of that was verified.
 //
-// NOTE: lastRequestTs / lastResponseTs are module-level and not resettable --
-// one of the 8 residual states folded into Phase 4. Until then every test here
-// uses a fresh increasing timestamp, because a repeated ts is treated as "same
-// event, already seen" and skipped. That workaround is itself the evidence for
-// why Phase 4 needs AppStore.reset().
+// Capture keeps module-level state (lastRequestTs / lastResponseTs /
+// pendingRequests / chatRounds), so this file resets it before EVERY test via
+// the same resetCaptureState() the app calls on a route change. The timestamps
+// also advance per call, because a repeated ts means "same event, already seen"
+// and is skipped -- which is production behaviour worth keeping honest.
+// Without the reset the suite passes in file order and fails when shuffled: a
+// request left in pendingRequests by an earlier test pairs with the next
+// response and flushes an extra round.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	chatRounds,
@@ -16,6 +19,7 @@ import {
 	lookupModelName,
 	modelNameById,
 	pollCaptures,
+	resetCaptureState,
 } from "../../src/capture";
 import { conversationStore } from "../../src/conversationStore";
 import type { ChatRequest, ChatResponse } from "../../src/types";
@@ -68,7 +72,7 @@ function setDatasets(req?: ChatRequest, resp?: ChatResponse) {
 
 beforeEach(() => {
 	conversationStore.reset();
-	chatRounds.clear();
+	resetCaptureState(); // clears lastRequestTs/lastResponseTs/pendingRequests too
 	modelNameById.clear();
 	setDatasets();
 });

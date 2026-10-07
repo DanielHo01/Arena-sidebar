@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // core/serialize.ts — the export/summary text builders.
 //
 // These were closures inside exportConversation() in ui/modals.ts, interleaved

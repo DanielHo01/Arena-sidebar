@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // platform/storage.ts — the single chrome.storage adapter.
 //
 // Before this module existed there were 14 hand-rolled storage sites across 5

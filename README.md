@@ -1,6 +1,8 @@
 # Edge AI Sidebar
 
-> **版本**: 0.2.0 | **构建大小**: ~58 KB gzip:18.6 KB (content script) + 0.9 KB (inject hook)
+> **版本**: 0.2.0 | **构建大小**: 74.1 KB / gzip 23.3 KB（content script）+ 1.9 KB（inject hook）
+>
+> **代码规模**: `src/` 49 个 `.ts` / 7,153 行 · **测试**: 42 文件 / 751 用例 · **门禁**: 见 [docs/architecture.md](./docs/architecture.md)
 
 Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持导出、摘要生成、标题自定义等功能。
 
@@ -59,66 +61,66 @@ Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳
 ```
 D:\edge-ai-sidebar\
 ├── src/
-│   ├── content.ts              内容脚本入口：bootstrap + ensureUI（239 行）
-│   ├── conversationStore.ts    消息存储 + refreshStore 三源合并（275 行）
-│   ├── extract.ts              DOM 消息提取（238 行）
-│   ├── historyTitles.ts        双击改名 + 自定义标题恢复（138 行）
-│   ├── titleResolver.ts        标题解析 customTitle > title > sessionId（35 行）
-│   ├── state.ts                panel / fab / cachedElements / timers（38 行）
+│   ├── content.ts              内容脚本入口：bootstrap + ensureUI
+│   ├── conversationStore.ts    消息存储 + refreshStore 三源合并
+│   ├── extract.ts              DOM 消息提取
+│   ├── historyTitles.ts        双击改名 + 自定义标题恢复
+│   ├── titleResolver.ts        标题解析 customTitle > title > sessionId
+│   ├── state.ts                panel / fab / cachedElements / timers
 │   ├── rounds.ts               隐藏轮次标记：按会话持久化 + 跨标签同步
-│   ├── types.ts                共享类型（145 行）
+│   ├── types.ts                共享类型
 │   ├── manifest.json           MV3 源 manifest
 │   │
 │   ├── app/                    生命周期编排
-│   │   ├── loop.ts             MutationObserver + 2s 抓取轮询 + 30s 重扫（149 行）
-│   │   └── store.ts            resetSessionState + disposer 注册表（95 行）
+│   │   ├── loop.ts             MutationObserver + 2s 抓取轮询 + 30s 重扫
+│   │   └── store.ts            resetSessionState + disposer 注册表
 │   │
 │   ├── core/                   纯逻辑，无 DOM 依赖，覆盖率 99/90/100/100
-│   │   ├── fingerprint.ts      消息指纹（57 行）
-│   │   ├── renderKey.ts        渲染快路径的单一比较键（32 行）
-│   │   ├── rounds.ts           轮次分组（104 行）
-│   │   └── serialize.ts        导出 / 摘要 prompt 构建（240 行）
+│   │   ├── fingerprint.ts      消息指纹
+│   │   ├── renderKey.ts        渲染快路径的单一比较键
+│   │   ├── rounds.ts           轮次分组
+│   │   └── serialize.ts        导出 / 摘要 prompt 构建
 │   │
 │   ├── platform/               浏览器 API 边界，chrome.storage 与 clipboard 各只此一处
-│   │   ├── arenaDom.ts         所有编码 arena.ai 结构知识的选择器与探针（142 行）
-│   │   ├── clipboard.ts        navigator.clipboard 唯一封装（58 行）
-│   │   ├── route.ts            SPA 路由解析（49 行）
-│   │   └── storage.ts          chrome.storage 唯一封装，永不 reject，含配额重试 + LRU（339 行）
+│   │   ├── arenaDom.ts         所有编码 arena.ai 结构知识的选择器与探针
+│   │   ├── clipboard.ts        navigator.clipboard 唯一封装
+│   │   ├── route.ts            SPA 路由解析
+│   │   └── storage.ts          chrome.storage 唯一封装，永不 reject，含配额重试 + LRU
 │   │
 │   ├── features/               有状态业务逻辑
-│   │   ├── bootstrapExtract.ts 首屏 __NEXT_DATA__ 提取（118 行）
-│   │   ├── prescroll.ts        虚拟化历史预滚动（189 行）
-│   │   ├── roundNav.ts         轮次跳转（70 行）
-│   │   └── sessions.ts         文件夹 / 会话索引（228 行）
+│   │   ├── bootstrapExtract.ts 首屏 __NEXT_DATA__ 提取
+│   │   ├── prescroll.ts        虚拟化历史预滚动
+│   │   ├── roundNav.ts         轮次跳转
+│   │   └── sessions.ts         文件夹 / 会话索引
 │   │
-│   ├── capture.ts              抓取聚合入口（22 行）
+│   ├── capture.ts              抓取聚合入口
 │   ├── capture/
-│   │   ├── chatCapture.ts      fetch 请求 / 响应配对（131 行）
-│   │   ├── models.ts           模型名收割（119 行）
-│   │   └── rsc.ts              __aiSidebarRsc 事件接收（91 行）
+│   │   ├── chatCapture.ts      fetch 请求 / 响应配对
+│   │   ├── models.ts           模型名收割
+│   │   └── rsc.ts              __aiSidebarRsc 事件接收
 │   │
 │   └── ui/                     渲染层
-│       ├── arenaSidebar.ts     注入 Arena 侧边栏的 Session Library（291 行）
-│       ├── contextMenu.ts      历史链接右键菜单（230 行）
-│       ├── dom.ts              h() 元素构造器（79 行）
-│       ├── fab.ts              浮动按钮（78 行）
-│       ├── icons.ts            图标（14 行）
-│       ├── inlineRename.ts     内联改名编辑器，双击与右键共用（99 行）
-│       ├── keyboard.ts         快捷键（88 行）
-│       ├── modals.ts           导出 / 摘要模态框（264 行）
-│       ├── render.ts           刷新与渲染调度（114 行）
-│       ├── panel.ts            面板入口（17 行）
+│       ├── arenaSidebar.ts     注入 Arena 侧边栏的 Session Library
+│       ├── contextMenu.ts      历史链接右键菜单
+│       ├── dom.ts              h() 元素构造器
+│       ├── fab.ts              浮动按钮
+│       ├── icons.ts            图标
+│       ├── inlineRename.ts     内联改名编辑器，双击与右键共用
+│       ├── keyboard.ts         快捷键
+│       ├── modals.ts           导出 / 摘要模态框
+│       ├── render.ts           刷新与渲染调度
+│       ├── panel.ts            面板入口
 │       ├── panel/
-│       │   ├── highlight.ts    当前轮高亮（54 行）
-│       │   ├── list.ts         列表 reconcile（68 行）
-│       │   ├── roundItem.ts    单轮条目（158 行）
-│       │   └── skeleton.ts     面板骨架（161 行）
-│       ├── styles.ts           样式入口（15 行）
+│       │   ├── highlight.ts    当前轮高亮
+│       │   ├── list.ts         列表 reconcile
+│       │   ├── roundItem.ts    单轮条目
+│       │   └── skeleton.ts     面板骨架
+│       ├── styles.ts           样式入口
 │       └── styles/
-│           ├── arenaSidebar.ts ASL 命名空间，内联样式（73 行）
-│           ├── base.ts         基础样式（146 行）
-│           ├── contextMenu.ts  右键菜单样式（60 行）
-│           └── list.ts         列表样式（175 行）
+│           ├── arenaSidebar.ts ASL 命名空间，内联样式
+│           ├── base.ts         基础样式
+│           ├── contextMenu.ts  右键菜单样式
+│           └── list.ts         列表样式
 │
 ├── public/
 │   ├── inject-hook.js          MAIN world 注入，只包装 window.fetch
@@ -126,19 +128,22 @@ D:\edge-ai-sidebar\
 │
 ├── tests/
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
-│   └── unit/                   41 个测试文件，710 个用例
+│   ├── __fixtures__/probes/      真站 DOM 合同的可重放快照（probe:check 对账）
+│   ├── e2e/                    真 Chromium + 真 dist/ 的 13 步行为测试
+│   └── unit/                   42 个测试文件，751 个用例
 │
 ├── scripts/
-│   └── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
+│   ├── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
+│   ├── check-layers.ts         arch:check —— 分层方向与棘轮上限
+│   └── gen-probe.ts            从 arenaContract.ts 生成可执行探针
 │
 ├── dist/                       构建产物（直接加载到 Edge）
 ├── docs/
-│   ├── plan.md
-│   ├── refactor-plan.md        Phase 0–7 重构规格
-│   └── rebaseline-phase10a.md  Phase 10A 死代码清理记录
+│   ├── architecture.md         当前架构与每条门禁的出处（先读这个）
+│   ├── archive/                历史计划与交接文档，数字已过期
 │
 ├── vite.config.ts
-├── vitest.config.ts            覆盖率棘轮阈值（全局 + src/core + src/platform）
+├── vitest.config.ts            覆盖率地板（全局 + 五个层）+ 线程池与随机顺序
 ├── package.json
 ├── tsconfig.json
 ├── tsconfig.app.json           应用配置，含 noUncheckedIndexedAccess 等严格开关
@@ -251,8 +256,9 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 ## 自动化测试
 
 ```bash
-npm test                      # 全套 Vitest（jsdom 环境），含 DOM 合同快照重放
-npm run test:coverage         # 同上，带覆盖率与三档阈值棘轮
+npm test                      # 全套 Vitest（42 文件 / 751 用例），含 DOM 合同快照重放
+npm run arch:check            # 分层方向 + 未分层耦合上限 + 文件行数上限
+npm run test:coverage         # 同上，带覆盖率与按目录阈值棘轮
 npm run gen:probe             # 从 arenaContract.ts 生成 scripts/arena-probe.js
 npm run probe:check           # CI 用：探针与合同不同步则失败
 ```
@@ -261,12 +267,18 @@ npm run probe:check           # CI 用：探针与合同不同步则失败
 `tests/__fixtures__/probes/*.json` 是 2026-09 真页的可重放摘要。Arena 改版时
 把探针输出的 `snapshot` 丢进该目录，不必每次 sideload 点一遍。
 
-**当前状态**：
+**当前状态**（2026-10-07 实测，改数字请连着 `vitest.config.ts` 一起改）：
 
-- ✅ 41 个测试文件，710 个用例全部通过
-- ✅ 整体覆盖率 94% 语句 / 85.2% 分支 / 95.5% 函数
-- ✅ 按目录棘轮阈值全部通过：全局（42/42/45/42）、`src/core/**`（99/90/100/100）、`src/platform/**`（90/86/81/92）
-- ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算（70 KB / gzip 25 KB）
+- ✅ 42 个测试文件 / 751 个用例，`sequence.shuffle` 常开（用例顺序随机化）
+- ✅ 整体覆盖率 94.99% 语句 / 86.2% 分支 / 95.96% 函数 / 96.63% 行
+- ✅ 按目录棘轮：全局（94/85/95/96）、`src/core/**`（99/90/100/100）、
+  `src/platform/**`（96/89/91/99）、`src/app/**`（96/94/87/98）、
+  `src/features/**`（93/88/96/96）、`src/ui/**`（98/90/97/99）
+- ✅ `npm test` 4.8 s：`pool: "vmThreads"` 让 jsdom 每个 worker 只建一次
+  （此前每个测试文件建一次，占墙钟 63–79%），per-file isolation 保留
+- ✅ CI（`.github/workflows/ci.yml`）跑同一套门控 + bundle 体积预算
+  （75,000 B / gzip 25,000 B；实测 74,143 B / 23,342 B）
+  + 真 Chromium e2e（`npm run test:e2e`，13 步，跑 `dist/` 与 mock arena）
 
 （早期文档里的 `npm run test:mirror` / `test:src` 镜像测试脚本已在 Phase 0 迁移到 Vitest 时删除。）
 
@@ -308,6 +320,27 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 ```
 
 > 早期文档列的 `__aiSidebarSamples` / `__chatRounds` 全局变量和 `[AI Sidebar Debug]` 日志都已移除——`window.__aiSidebar*` 属性在 Phase 4 被换成模块内的 `timers` 引用（见 `src/state.ts`）。
+
+---
+
+## 质量门禁
+
+规范不写在文档里，写在会红的闸门里。`docs/architecture.md` 是这些门禁的说明书。
+
+| 命令 | 拦什么 | 上限来源 |
+| --- | --- | --- |
+| `npm run format:check` | 格式漂移 | Prettier（`tabWidth: 2`，与 `.editorconfig` 对齐） |
+| `npm run lint -- --max-warnings=0` | 0 warning 才算过 | `.oxlintrc.json` |
+| `npm run arch:check` | 依赖方向、循环依赖、`chrome.*` 越界、`core/` 碰 DOM、未分层耦合数、单文件行数 | `scripts/check-layers.ts` 里的常量 |
+| `npm run typecheck` | `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | `tsconfig.app.json` |
+| `npm run probe:check` | DOM 合同与生成的探针不同步 | `src/platform/arenaContract.ts` |
+| `npm test` | 751 用例 + 覆盖率地板 | `vitest.config.ts` `thresholds` |
+| `npm run build` + 预算 | content bundle 超过 75,000 B / gzip 25,000 B | `.github/workflows/ci.yml` |
+| `npm run test:e2e` | 真 Chromium + 真 `dist/` 的 13 步行为 | `tests/e2e/run.mjs` |
+
+`arch:check` 的上限是**地板/天花板**而非目标：它们等于"今天的实测值"，
+只允许往下调。三条棘轮（未分层耦合 50、单文件 420 行、覆盖率）都由
+`tests/unit/layer-rules.test.ts` 反向验证——规则本身失效时那条测试会红。
 
 ---
 

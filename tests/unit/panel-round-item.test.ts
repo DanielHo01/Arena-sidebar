@@ -61,28 +61,42 @@ function deleteButton(el: HTMLElement): HTMLButtonElement {
 	return el.querySelector<HTMLButtonElement>(".item-delete")!;
 }
 
-describe("createRoundEl", () => {
-	beforeEach(() => {
-		document.body.innerHTML = "";
-		// Both are module-level state shared across the whole test process; leaving
-		// either dirty makes a later test fail for the wrong reason.
-		// resetHiddenRounds also drops the adopted session id, so persistence
-		// tests start from a clean slate.
-		resetHiddenRounds();
-		conversationStore.reset();
-		setStorageBackend(null);
-		panel.isOpen = true;
-		panel.currentRoundIdx = 0;
-		mockScroll.mockClear();
-		// Default to no messages, like the real function returns for an
-		// unknown round — roundMetaLabel and the edit button both call it.
-		mockMessages.mockReset().mockReturnValue([]);
-		mockDelete.mockReset();
-		mockDelete.mockReturnValue(true);
-		setClipboardBackend(null);
-		window.history.pushState({}, "", "/");
-	});
+// The vi.mock factory above is hoisted, so these mocks are module-level state
+// shared by every describe in the file. A test that changes a default leaks it
+// into its neighbours — harmless in file order, a failure with an unrelated
+// cause under `sequence.shuffle` (this is exactly how "delete reports nothing to
+// remove" broke "arms on first click"). Both describes reset through here so
+// they cannot drift apart again.
+function resetRoundItemMocks(): void {
+	mockScroll.mockClear();
+	// Default to no messages, like the real function returns for an unknown
+	// round — roundMetaLabel and the edit button both call it.
+	mockMessages.mockReset().mockReturnValue([]);
+	// Deleting reports "something was removed" by default, because that is what
+	// makes refreshUI the interesting case.
+	mockDelete.mockReset().mockReturnValue(true);
+}
 
+beforeEach(() => {
+	// Shared module state this file can never leave dirty. Declared at file level
+	// on purpose: the per-describe version of this reset drifted, and each describe
+	// was missing a different piece (hidden-round ids in one, the delete mock's
+	// return value in another), which only shows up as a failing test with an
+	// unrelated cause once the order changes. One reset, inherited by all.
+	document.body.innerHTML = "";
+	// resetHiddenRounds also drops the adopted session id, so persistence tests
+	// start from a clean slate.
+	resetHiddenRounds();
+	conversationStore.reset();
+	setStorageBackend(null);
+	setClipboardBackend(null);
+	panel.isOpen = true;
+	panel.currentRoundIdx = 0;
+	resetRoundItemMocks();
+	window.history.pushState({}, "", "/");
+});
+
+describe("createRoundEl", () => {
 	it("renders the row structure the stylesheet and diffing rely on", () => {
 		const el = createRoundEl(round(), 2, vi.fn());
 
@@ -215,10 +229,6 @@ describe("createRoundEl", () => {
 });
 
 describe("updateRoundEl", () => {
-	beforeEach(() => {
-		document.body.innerHTML = "";
-	});
-
 	it("refreshes the label, title, preview and index in place", () => {
 		const el = createRoundEl(round(), 0, vi.fn());
 

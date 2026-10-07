@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // Quota monitoring + LRU eviction (#22 / #23).
 //
 // chrome.storage.local is ~10MB and every session snapshot stores full

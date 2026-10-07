@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // core/renderKey.ts — the single value refreshUI compares against to decide
 // whether a re-render is needed.
 //

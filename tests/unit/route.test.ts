@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // Phase 1 bug fix: /c/ route parsing was duplicated across 4 files in 3
 // different regex variants. Two of them used /\/c\/([^/?]+)/ (no `#` in the
 // exclusion class), so a history link href of "/c/abc#section" resolved to

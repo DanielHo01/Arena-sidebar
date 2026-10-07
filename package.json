@@ -3,11 +3,12 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "Floating message navigator for arena.ai — vanilla Shadow DOM UI",
+  "description": "Floating message navigator for arena.ai \u2014 vanilla Shadow DOM UI",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "arch:check": "tsx scripts/check-layers.ts",
     "typecheck": "tsc -b --pretty false",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

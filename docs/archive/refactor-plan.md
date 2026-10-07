@@ -1,4 +1,11 @@
 # 系统性重构方案（Architecture Refactor Plan）
+<!-- 历史快照：仅记录当时的决策与状态，不作为当前事实来源。 -->
+
+> ⚠️ **已归档 / 历史快照**。Phase 0–7 的规格与执行记录；其中的"CI 现状"验证表已由 `tests/unit/layer-rules.test.ts` 接管——现在每条门禁都有会红的反向用例。
+> 文中的行数、覆盖率、bundle 大小、任务清单等数字**已过期**——
+> 例如 `plan.md` 的验收标准 "files over 300 lines: 0" 在被写下时就不为真。
+> 当前架构、分层规则与门禁的出处见 [../architecture.md](../architecture.md)。
+
 
 > 生成于 `2951896`。所有结论均来自对 `src/` 的静态取证 + 真实源码运行验证，**无推测**。
 > 配套基线文档：[rebaseline-phase10a.md](./rebaseline-phase10a.md)（架构快照）、[plan.md](./plan.md)（v0.1 已废弃）。

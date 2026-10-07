@@ -1,7 +1,9 @@
 name: CI
 
 # Every gate below has been verified to actually fail on a real violation, not
-# just to exit 0. See docs/refactor-plan.md "CI 现状" for the verification table.
+# just to exit 0. Gate list and rationale: docs/architecture.md; the layer
+# rules carry their own fixtures in tests/unit/layer-rules.test.ts, so a rule
+# that stops catching anything turns that suite red.
 on:
   push:
     branches: ["**"]
@@ -51,6 +53,13 @@ jobs:
 
       - name: Probe is generated from the DOM contract
         run: npm run probe:check
+
+      # The layer contract, the unlayered-file ceiling and the debt list.
+      # Runs before Test because a structural violation is cheaper to read here
+      # than as a coverage surprise afterwards. scripts/check-layers.ts is itself
+      # covered by tests/unit/layer-rules.test.ts.
+      - name: Architecture gates
+        run: npm run arch:check
 
       - name: Test
         run: npm run test
@@ -120,6 +129,13 @@ jobs:
 
       - name: Coverage
         run: npm run test:coverage
+
+      # Real Chromium against the real dist/ build and a mock Arena. This is the
+      # only layer that exercises prescroll, Shadow DOM rendering and the
+      # MAIN-world fetch hook together; unit tests cannot see those. 13 steps.
+      # It needs the build, so it stays after the Build step by construction.
+      - name: End-to-end (Chromium)
+        run: npm run test:e2e
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7

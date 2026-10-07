@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // src/rounds.ts — per-session persistence of hidden-round flags (#7) and
 // deleted-message tombstones (#15).
 //

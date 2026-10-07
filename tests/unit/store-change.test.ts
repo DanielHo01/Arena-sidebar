@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // The store's change subscription — the seam that breaks the layer inversion.
 //
 // Before this, conversationStore.ts (data) imported folders.ts (760 lines of
