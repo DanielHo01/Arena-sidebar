@@ -9,12 +9,8 @@
 
 import type { Disposer, SessionFolder, SessionMeta } from "../types";
 import { onStoreChange } from "../conversationStore";
-import {
-	storageAvailable,
-	storageGetAll,
-	storageRemove,
-	storageSetDetailed,
-} from "../platform/storage";
+import { storageAvailable, storageGetAll } from "../platform/storage";
+import { storageRemove, storageSetDetailed } from "../platform/storageWrites";
 
 // ─── Default folders ─────────────────────────────────────────────────────────────────
 
@@ -302,11 +298,7 @@ export async function migrateHistoryTitles(): Promise<void> {
 		}
 	}
 	if (keysToRemove.length === 0) return;
-	if (await storageRemove(keysToRemove)) {
-		console.log(
-			`[AI Sidebar] migrateHistoryTitles: migrated ${keysToRemove.length} key(s)`,
-		);
-	} else {
+	if (!(await storageRemove(keysToRemove))) {
 		console.warn(
 			"[AI Sidebar] migrateHistoryTitles: failed to remove old keys",
 		);

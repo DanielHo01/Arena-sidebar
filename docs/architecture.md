@@ -25,7 +25,7 @@ content script (isolated world)  ← src/content.ts 是唯一入口
 
 ## 2. 分层与依赖方向
 
-`src/` = **49 个 `.ts` / 7,153 行**。层级不是目录美观，而是一条可执行约束
+`src/` = **50 个 `.ts` / 5,887 行**（Track A：删 2 个 barrel，加 3 个拆分文件，删 ~46 行 tracing）。层级不是目录美观，而是一条可执行约束
 （`scripts/check-layers.ts`，`npm run arch:check`）：
 
 | 层 | rank | 允许 import |
@@ -69,15 +69,15 @@ src/ui/styles.ts 3 · src/ui/panel.ts 2          合计 50 条入边
 | `types-has-no-imports` | `types.ts` 里有 import |
 | `no-cycle` | SCC 塌缩后剩余环（兜底） |
 | `unresolved-import` | 本地 `./` `../`  specifier 解析不到磁盘文件（挡 TS 别名和静默失效的重构） |
-| `file-size-ceiling` | 单个文件 > `FILE_LINES_MAX = 420` 行 |
-| `unlayered-coupling-ratchet` | 未分层模块入边 > `ROOT_IN_EDGE_MAX = 50` |
+| `file-size-ceiling` | 单个文件 > `FILE_LINES_MAX = 315` 行 |
+| `unlayered-coupling-ratchet` | 未分层模块入边 > `ROOT_IN_EDGE_MAX = 45` |
 | `stale-debt` | 登记表里的债边已不存在 |
 
 当前全绿输出：
 
 ```
 ✓ layer contract holds — no violations
-edges: 155 · unlayered inbound: 50/50 · largest file: 415/420 · debt: 3 pair(s)
+edges: 168 · unlayered inbound: 45/45 · largest file: 310/315 · debt: 3 pair(s)
 ```
 
 ### 已知债（`KNOWN_DEBT`，故意允许而非重写）
@@ -90,13 +90,14 @@ src/ui/panel/{keyboard,modals,roundItem}.ts → src/app/lifecycle.ts   （app �
 
 ### 行数天花板怎么来的
 
-`420` = 当前最差文件（`src/platform/storage.ts` 414 行）+ 6。**它是天花板不是目标**：
-Track A 把 `storage.ts`（414）、`conversationStore.ts`（379）、`extract.ts`（365）拆开时，
-必须把常量一起往下调——这是有意的，防止"以后再说"。
+`315` = 当前最差文件（`src/ui/arenaSidebar.ts` 310 行）+ 5。**它是天花板不是目标**：
+Track A 拆完 `storage.ts`、`conversationStore.ts`、`extract.ts` 后把它从 420 一起调了下来——
+这是有意的，防止"以后再说"。下一个顶到天花板的文件就该被拆，而不是把天花板顶上去。
 
 它同时拆穿了一条历史验收标准："files over 300 lines: 0"（`docs/archive/plan.md`）
-从未为真：现在有 6 个文件超过 300 行（`platform/storage.ts` 414、`conversationStore.ts` 379、
-`extract.ts` 365、`features/sessions.ts` 314、`ui/arenaSidebar.ts` 309、`content.ts` 309）。
+从未为真：Track C 时有 6 个文件超过 300 行（`platform/storage.ts` 414、`conversationStore.ts` 379、
+`extract.ts` 365、`features/sessions.ts` 314、`ui/arenaSidebar.ts` 309、`content.ts` 309）；
+Track A 拆完三个巨头、删完 tracing 后只剩 2 个（`ui/arenaSidebar.ts` 310、`features/sessions.ts` 306）。
 
 ## 4. 测试与覆盖率地板
 
@@ -135,41 +136,40 @@ e2e（`.github/workflows/ci.yml` 的 `End-to-end (Chromium)` 步骤）跑的是�
 
 ## 5. 体积预算与 `dist/` 实际内容
 
-`content.ts-*.js` **74,143 B**（gzip-9 **23,342 B**），预算 75,000 / 25,000 ——
-只剩 **857 字节**（1.1%）的余量。预算故意设成棘轮：它现在的作用是防止变胖，
-Track A 拆完文件后应把它压到 ~60 KB 并把预算一起调小（理由写进 commit message）。
+`content.ts-*.js` **72,526 B**（gzip-9 **22,967 B**），预算 73,500 / 24,000 ——
+各剩 ~1 KB 余量。预算故意设成棘轮：Track A 删 tracing 把包从 74,143 压下来后，
+预算跟着调小（理由在调预算的 commit message 里）。
 量法必须是 `gzip -c9 dist/assets/content.ts-*.js | wc -c`，与 CI 一致；
-不要引用 vite 打印的 `23.57 kB`（那是 `gzip -6` + 1000 进制，差 ~200 B）。
+不要引用 vite 打印的 `72.52 kB`（那是 1000 进制）。
 
-`dist/` 全量 **85,727 B / 12 个文件**：
+`dist/` 全量 **80,961 B / 8 个文件**：
 
 | 文件 | 字节 | 来源 / 谁引用 |
 | --- | --- | --- |
-| `assets/content.ts-*.js` | 74,143 | 打包产物，`content_scripts[1].js` |
+| `assets/content.ts-*.js` | 72,526 | 打包产物，`content_scripts[1].js` |
 | `assets/inject-hook.js-*.js` | 896 | crx 把 manifest 里的 `public/inject-hook.js` **重写**成 hash 产物 |
-| `inject-hook.js` | 1,883 | publicDir 原样拷贝；只被下面那条 WAR 引用 |
-| `manifest.json` | 1,795 | — |
-| `icons/icon-*.png` | 3,505 | publicDir 原样拷贝（**规范位置**），**没人引用** |
-| `public/icons/icon-*.png` | 3,505 | 同样 4 个文件的第二份；被 `manifest.icons` 引用 |
+| `inject-hook.js` | 1,883 | publicDir 原样拷贝；只被下面那条 WAR 引用（Track E 删） |
+| `manifest.json` | 1,767 | — |
+| `icons/icon-*.png` | 3,505 | 唯一一份；被 `manifest.icons` 引用（Track A5 修好，见下） |
 
-两条都成立的事实，值得 Track A 收：
+已收一条，还剩一条（归 Track E）：
 
-1. **图标能显示纯属侥幸。** `src/manifest.json` 的 `icons` 写的是 `public/icons/…`——
-   带着 `public/` 前缀，也就是 Vite publicDir **不会**产出的位置（publicDir 拷贝会去掉
-   这层前缀，规范路径是 `dist/icons/…`）。它现在能跑，只是因为 crx 额外产出了
-   `dist/public/icons/`。把 manifest 改成 `icons/icon-16.png` 就指向真正规范的那份，
-   `dist/public/` 整层消失，省 3,505 B（包的 4%）。
-   验证方式（改完必须两条都跑，光看构建成功不够）：
-   `ls dist/public 2>&1`（应为 no such file）＋ `npm run test:e2e`（真 Chromium 加载真 `dist/`）。
-   在 manifest 路径没理顺之前，**不要**往 `public/` 里放任何新文件：那里的文件名是
+1. ✅ **图标双份拷贝（Track A5 收掉）。** `src/manifest.json` 的 `icons` 曾写成
+   `public/icons/…`——带着 `public/` 前缀，也就是 Vite publicDir **不会**产出的位置
+   （publicDir 拷贝会去掉这层前缀，规范路径是 `dist/icons/…`）。它当时能跑，
+   纯粹因为 crx 额外产出了 `dist/public/icons/`，包里躺着两份同样的图标。
+   修法：图标源文件搬到仓库根 `icons/`，manifest 改成 `icons/icon-16.png`；
+   `dist/public/` 整层消失，省 3,505 B。验收跑了两条：
+   `ls dist/public 2>&1`（no such file）＋ `npm run test:e2e`（13/13，真 Chromium 加载真 `dist/`）。
+   教训保留：**不要**往 `public/` 里放非扩展资产，那里的文件名是
    "看起来有 `public/` 前缀、实际没有"的双重身份，容易踩。
-2. **一条没人用的 `web_accessible_resources`。** `resources: ["inject-hook.js"]`
+2. **一条没人用的 `web_accessible_resources`（Track E）。** `resources: ["inject-hook.js"]`
    在 `src/` 里没有任何 `chrome.runtime.getURL` 消费方（grep 只找到注释），
    hook 是靠 `world: "MAIN"` 的 content_script 注入的；而且它的 `matches` 里带着
    `http://127.0.0.1:8000/*` 与 `http://localhost:8000/*` 两个**只属于开发环境**的
-   origin，却会随包发出去。删掉这一整条 WAR：`public/inject-hook.js` 就只剩 crx 那份
-   hash 产物（`dist/inject-hook.js` 与 1,883 B 一起消失），更重要的是页面上任何脚本
-   从此 GET 不到这个扩展资源——安全面收窄。同样以 e2e 为准（13 步里有 hook 注入的断言）。
+   origin，却会随包发出去。Track E 删整个抓取子系统时连这一整条 WAR 一起删：
+   `dist/inject-hook.js` 与 1,883 B 一起消失，更重要的是页面上任何脚本
+   从此 GET 不到这个扩展资源——安全面收窄。同样以 e2e 为准。
 
 `public/` 是 Vite `publicDir`，**里面每个文件都会进扩展包**，所以非扩展资产不要放这里
 （`docs/assets/pelican-bicycle.svg` 就是这样被移出去的）。

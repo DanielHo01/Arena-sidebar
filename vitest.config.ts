@@ -34,12 +34,7 @@ export default defineConfig({
 			// percentage move without any behaviour being tested. The three
 			// barrels are re-export-only (asserted by tests/unit/layer-rules.test.ts:
 			// if logic lands in one, this list has to shrink).
-			exclude: [
-				"src/types.ts",
-				"src/capture.ts",
-				"src/ui/styles.ts",
-				"src/ui/panel.ts",
-			],
+			exclude: ["src/types.ts", "src/capture.ts"],
 			// ── Ratchet ────────────────────────────────────────────────────
 			// These are FLOORS, not targets: set just under the level actually
 			// measured, and only ever raised. Do not lower them without saying

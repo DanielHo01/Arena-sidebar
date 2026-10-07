@@ -43,7 +43,6 @@ let preScrollActive = false; // suppress observer work while forced-scrolling
 
 /** Poll briefly for Arena's scroll container, which React mounts late. */
 function retryUntilContainer(onDone: () => void): void {
-	console.log("[AI Sidebar] preScroll: no scroll container yet, retrying...");
 	let retries = 0;
 	const retry = setInterval(() => {
 		// #28: must use findScrollContainer (semantic selectors + largest-in-main
@@ -53,9 +52,6 @@ function retryUntilContainer(onDone: () => void): void {
 		if (!c && ++retries <= 10) return;
 		clearInterval(retry);
 		if (!c) {
-			console.log(
-				"[AI Sidebar] preScroll: gave up, no container after retries",
-			);
 			preScrollDone = true;
 			onDone();
 			return;
@@ -72,16 +68,11 @@ function retryUntilContainer(onDone: () => void): void {
  */
 function scrollUntilStable(container: Element, onDone: () => void): void {
 	const step = Math.max(container.clientHeight * 2, 1500);
-	console.log(
-		"[AI Sidebar] preScroll: totalH=",
-		container.scrollHeight,
-		"step=",
-		step,
-	);
 	preScrollActive = true;
 	let lastMsgCount = countRenderedMessages();
 	let stableTicks = 0;
 	const STABLE_LIMIT = 3;
+	const SETTLE_MS = 600; // let the list settle before scrolling back to top
 	preScrollInterval = setInterval(() => {
 		// Defense: if the interval was cleared externally, stop cleanly.
 		if (!preScrollActive || !preScrollInterval) {
@@ -102,12 +93,11 @@ function scrollUntilStable(container: Element, onDone: () => void): void {
 		clearInterval(preScrollInterval);
 		preScrollInterval = null;
 		preScrollActive = false;
-		console.log("[AI Sidebar] preScroll: done, messages=" + lastMsgCount);
 		setTimeout(() => {
 			container.scrollTop = 0;
 			preScrollDone = true;
 			onDone();
-		}, 600);
+		}, SETTLE_MS);
 	}, 120);
 }
 
@@ -128,7 +118,6 @@ export function startPreScroll(onDone: () => void) {
 	// need the full list extracted. If the container isn't virtualized (fits on
 	// screen), skip entirely — no scroll, no extract, no signature burn.
 	if (container.scrollHeight <= container.clientHeight * 2) {
-		console.log("[AI Sidebar] preScroll: skipped, container not virtualized");
 		preScrollDone = true;
 		onDone();
 		return;

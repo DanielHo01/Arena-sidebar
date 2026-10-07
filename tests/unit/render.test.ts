@@ -32,10 +32,14 @@ const hooks = vi.hoisted(() => ({
 	}),
 }));
 
-vi.mock("../../src/ui/panel", () => ({
+vi.mock("../../src/ui/panel/skeleton", () => ({
 	ensureStyles: hooks.ensureStyles,
 	ensurePanelSkeleton: hooks.ensurePanelSkeleton,
+}));
+vi.mock("../../src/ui/panel/list", () => ({
 	reconcileList: hooks.reconcileList,
+}));
+vi.mock("../../src/ui/panel/highlight", () => ({
 	refreshCurrentHighlight: hooks.refreshCurrentHighlight,
 	setupScrollHighlight: hooks.setupScrollHighlight,
 }));

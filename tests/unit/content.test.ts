@@ -98,6 +98,8 @@ vi.mock("../../src/features/bootstrapExtract", () => ({
 }));
 vi.mock("../../src/conversationStore", () => ({
 	conversationStore: m.store,
+}));
+vi.mock("../../src/conversationSync", () => ({
 	refreshStore: m.refreshStore,
 }));
 vi.mock("../../src/state", () => ({ panel: m.panel, fab: m.fab }));
@@ -124,6 +126,8 @@ vi.mock("../../src/platform/route", () => ({
 }));
 vi.mock("../../src/platform/storage", () => ({
 	storageGet: m.storageGet,
+}));
+vi.mock("../../src/platform/storageWrites", () => ({
 	onStorageWriteFailed: m.onStorageWriteFailed,
 }));
 vi.mock("../../src/ui/toast", () => ({ showToast: m.showToast }));
@@ -148,7 +152,10 @@ vi.mock("../../src/app/loop", () => ({
 vi.mock("../../src/ui/keyboard", () => ({
 	setupKeyboardShortcuts: m.setupKeyboardShortcuts,
 }));
-vi.mock("../../src/features/theme", () => ({ setupTheme: m.setupTheme }));
+vi.mock("../../src/features/theme", () => ({
+	setupTheme: m.setupTheme,
+	HOST_ELEMENT_ID: "__edge_ai_sidebar_host",
+}));
 vi.mock("../../src/ui/render", () => ({ renderUI: m.renderUI }));
 vi.mock("../../src/features/prescroll", () => ({
 	startPreScroll: m.startPreScroll,

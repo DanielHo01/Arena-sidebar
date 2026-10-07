@@ -393,6 +393,7 @@ describe("edit and delete buttons (#15)", () => {
 
 	it("edits the user message inline and refreshes", () => {
 		seedRoundWithUser();
+		panel.lastRenderKey = "junk";
 		const refreshUI = vi.fn();
 		const el = createRoundEl(round({ id: "r1" }), 0, refreshUI);
 
@@ -410,6 +411,10 @@ describe("edit and delete buttons (#15)", () => {
 
 		expect(conversationStore.messages[0].content).toBe("corrected question");
 		expect(conversationStore.messages[0].edited).toBe(true);
+		// Round ids don't move on edit, so the commit must invalidate the
+		// render fast path or the re-render is swallowed (moved from
+		// editMessageContent in Track A3: the UI owns its cache).
+		expect(panel.lastRenderKey).toBe("");
 		expect(refreshUI).toHaveBeenCalledTimes(1);
 	});
 

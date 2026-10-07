@@ -20,10 +20,9 @@ import {
 	storageAvailable,
 	storageGet,
 	storageGetAll,
-	storageRemove,
-	storageSet,
 	type StorageBackend,
 } from "../../src/platform/storage";
+import { storageRemove, storageSet } from "../../src/platform/storageWrites";
 
 /** In-memory backend. `fail` makes the NEXT call reject, once. */
 function fakeBackend() {

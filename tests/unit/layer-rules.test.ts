@@ -253,11 +253,7 @@ describe("debt ratchet", () => {
 	// nothing. If anyone puts logic in one, that exemption has to be revisited.
 	it("keeps the pure re-export barrels free of logic", () => {
 		const real = collectModules(SRC);
-		for (const file of [
-			"src/capture.ts",
-			"src/ui/panel.ts",
-			"src/ui/styles.ts",
-		]) {
+		for (const file of ["src/capture.ts"]) {
 			const body = stripNonCode(real[file] ?? "").trim();
 			expect(body, file).toMatch(/^(import|export)\s/);
 			expect(body, file).not.toMatch(
@@ -304,6 +300,10 @@ describe("report formatting", () => {
 	it("prints the rule, the location and the ratchet line", () => {
 		const g = withFile({
 			"src/core/rounds.ts": `import { view } from "../ui/panel";\nexport const x = view;\n`,
+			// One legal edge into an unlayered file, so the ratchet line
+			// prints a nonzero count (app may import root).
+			"src/rounds.ts": `export const y = 1;\n`,
+			"src/app/store.ts": `import { get } from "../platform/storage";\nimport { y } from "../rounds";\nexport const reset = () => [get, y];\n`,
 		});
 		const text = format(analyzeGraph(g));
 		expect(text).toContain("no-upward-import");

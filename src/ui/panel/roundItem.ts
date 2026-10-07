@@ -9,7 +9,7 @@ import {
 	getMessagesForRound,
 	scrollToRound,
 } from "../../features/roundNav";
-import { editMessageContent } from "../../conversationStore";
+import { editMessageContent } from "../../conversationSync";
 import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
 import { copyText } from "../../platform/clipboard";
@@ -118,7 +118,11 @@ export function createRoundEl(
 			target: titleEl,
 			initial: userMsg.content,
 			onCommit: (text) => {
-				if (editMessageContent(userMsg.id, text)) refreshUI();
+				if (!editMessageContent(userMsg.id, text)) return;
+				// renderKey compares round ids, which an edit does not move —
+				// without this the fast path swallows the re-render.
+				panel.lastRenderKey = "";
+				refreshUI();
 			},
 			// The title shows truncated text; without a re-render a cancel
 			// would leave the full untruncated content in the row.

@@ -23,12 +23,14 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     env:
-      # Extension bundle budget, in bytes. The built bundle was 68.5 kB on main
-      # before the #22/#23 storage work (+4 kB for quota retry + LRU eviction
-      # + full-storage toast + header quota dot) -- this is a real assertion,
-      # not a summary line. Raise it only in a commit that explains why.
-      BUNDLE_BUDGET_BYTES: 75000
-      BUNDLE_GZIP_BUDGET_BYTES: 25000
+      # Extension bundle budget, in bytes. Track A shrank the bundle from
+      # 74,143 to 72,526 B (console.log tracing deleted across 6 modules;
+      # the file splits are size-neutral), so the budget drops with it:
+      # 73,500 raw / 24,000 gzip-9, ~1 kB of headroom each. This is a real
+      # assertion, not a summary line. Raise it only in a commit that
+      # explains why.
+      BUNDLE_BUDGET_BYTES: 73500
+      BUNDLE_GZIP_BUDGET_BYTES: 24000
     steps:
       - name: Checkout
         uses: actions/checkout@v7

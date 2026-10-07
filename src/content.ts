@@ -15,7 +15,6 @@
 //   ui/fab.ts          — FAB + drag
 //   ui/modals.ts       — export / summary modals
 //   historyTitles.ts    — restore /c/ link custom titles + rename hint
-console.log("[AI Sidebar] content script loaded, modules initializing...");
 // Wrap everything in an IIFE so top-level errors are caught and reported to the console.
 // Wires:
 //   extract.ts      — DOM extraction
@@ -27,11 +26,8 @@ console.log("[AI Sidebar] content script loaded, modules initializing...");
 //   folders.ts          — session folder management
 
 import { extractMessages } from "./extract";
-import {
-	conversationStore,
-	dropTombstonedMessages,
-	refreshStore,
-} from "./conversationStore";
+import { conversationStore, dropTombstonedMessages } from "./conversationStore";
+import { refreshStore } from "./conversationSync";
 import { extractBootstrapMessages } from "./features/bootstrapExtract";
 import { panel, fab } from "./state";
 import { setupRscCapture } from "./capture";
@@ -48,7 +44,8 @@ import {
 import { setupHistoryContextMenu } from "./ui/contextMenu";
 import { setupHistoryTitles } from "./historyTitles";
 import { getSessionId, isSessionRoute } from "./platform/route";
-import { onStorageWriteFailed, storageGet } from "./platform/storage";
+import { storageGet } from "./platform/storage";
+import { onStorageWriteFailed } from "./platform/storageWrites";
 import { showToast } from "./ui/toast";
 import { updateStorageDot } from "./ui/panel/skeleton";
 import {
@@ -65,7 +62,7 @@ import {
 	type LoopHooks,
 } from "./app/loop";
 import { setupKeyboardShortcuts } from "./ui/keyboard";
-import { setupTheme } from "./features/theme";
+import { HOST_ELEMENT_ID, setupTheme } from "./features/theme";
 import { renderUI } from "./ui/render";
 import { startPreScroll } from "./features/prescroll";
 
@@ -138,16 +135,12 @@ function setupStorageFailureToast(): () => void {
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────────────────
 
 function ensureUI() {
-	console.log("[AI Sidebar] ensureUI called, current shadowRoot:", shadowRoot);
 	if (shadowRoot) {
-		console.log("[AI Sidebar] ensureUI: shadowRoot already set, skipping");
 		return;
 	}
-	console.log("[AI Sidebar] ensureUI: creating/looking up host element");
-	const existing = document.getElementById("__edge_ai_sidebar_host");
-	console.log("[AI Sidebar] ensureUI: existing host:", !!existing);
+	const existing = document.getElementById(HOST_ELEMENT_ID);
 	const host = existing ?? document.createElement("div");
-	host.id = "__edge_ai_sidebar_host";
+	host.id = HOST_ELEMENT_ID;
 	host.style.cssText =
 		"all: initial; position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647;";
 	const target = document.body || document.documentElement;
@@ -157,13 +150,10 @@ function ensureUI() {
 	}
 	if (!document.body?.contains(host)) {
 		target.appendChild(host);
-		console.log("[AI Sidebar] ensureUI: appended host to", target.tagName);
 	} else {
-		console.log("[AI Sidebar] ensureUI: host already in DOM");
 	}
 	try {
 		shadowRoot = host.attachShadow({ mode: "closed" });
-		console.log("[AI Sidebar] attachShadow result:", !!shadowRoot);
 	} catch (e) {
 		console.error("[AI Sidebar] attachShadow threw:", e);
 		return;
@@ -172,7 +162,6 @@ function ensureUI() {
 		console.error("[AI Sidebar] attachShadow returned null");
 		return;
 	}
-	console.log("[AI Sidebar] shadowRoot attached, calling refreshUI...");
 	try {
 		// Theme before the first paint: the host attribute must be in place
 		// while the very first render is styled, or a dark page gets one
@@ -206,18 +195,10 @@ try {
 
 	// pi-lens-ignore: no-unused-vars
 	const bootstrap = () => {
-		console.log(
-			"[AI Sidebar] bootstrap called, bootstrapDone:",
-			bootstrapDone,
-			"body:",
-			!!document.body,
-		);
 		if (bootstrapDone) {
-			console.log("[AI Sidebar] bootstrap: already done, skipping");
 			return;
 		}
 		if (!document.body) {
-			console.log("[AI Sidebar] bootstrap: no body yet, skipping");
 			return;
 		}
 		bootstrapDone = true;
@@ -251,7 +232,6 @@ try {
 		queueMicrotask(() =>
 			ensureArenaFolderEntry(() => toggleArenaSessionLibrarySection()),
 		);
-		console.log("[AI Sidebar] bootstrap: calling ensureUI...");
 		ensureUI();
 		if (shadowRoot) {
 			const hooks: LoopHooks = { refreshUI, rebuildForCurrentRoute };
@@ -269,12 +249,6 @@ try {
 				// lands races an empty store — on a quiet page nothing else would
 				// trigger another render until the 30s rescan. Render after.
 				void rebuildForCurrentRoute().then(() => {
-					console.log(
-						"[AI Sidebar] store: total messages=" +
-							conversationStore.messages.length +
-							" rounds=" +
-							conversationStore.rounds.length,
-					);
 					refreshUI();
 				});
 			});

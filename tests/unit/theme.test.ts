@@ -18,7 +18,11 @@ import {
 } from "../../src/platform/theme";
 import { ensurePanelSkeleton } from "../../src/ui/panel/skeleton";
 import { PANEL_BASE_CSS } from "../../src/ui/styles/base";
-import { CONTEXT_MENU_CSS, UI_STYLES } from "../../src/ui/styles";
+import { PANEL_LIST_CSS } from "../../src/ui/styles/list";
+import { CONTEXT_MENU_CSS } from "../../src/ui/styles/contextMenu";
+
+// What skeleton.ts injects into the shadow root: base + list in one string.
+const UI_STYLES = PANEL_BASE_CSS + PANEL_LIST_CSS;
 import { ASL } from "../../src/ui/styles/arenaSidebar";
 import {
 	applyTheme,

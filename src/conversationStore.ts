@@ -1,11 +1,13 @@
-// conversationStore — canonical message store with multi-source merge.
-// Architecture: bootstrap > capture > dom (priority order).
+// conversationStore — canonical message store: data + persistence.
 //
-// Bootstrap: reads page initialization data from __NEXT_DATA__ or script tags.
-// Capture:   accumulates messages from inject-hook.js intercepted API requests.
-// DOM:      extracts visible messages AND binds DOM elements as anchors.
+// The store object below owns the canonical messages/rounds, snapshot
+// persistence (save/load), the change pub/sub, and the maintenance ops
+// loadFromStorage needs (bindDomAnchors, rebuildRounds,
+// dropTombstonedMessages — they stay so the dependency runs one way).
+// Everything that merges external data in or mutates messages
+// (refreshStore, addCapturedMessage, editMessageContent, the upsert
+// primitive) lives in ./conversationSync.ts.
 //
-// The store maintains canonical messages + computed rounds.
 // DOM binding runs as a separate pass: fingerprint → domId.
 
 import type {
@@ -14,13 +16,14 @@ import type {
 	SidebarMessage,
 	SidebarRound,
 } from "./types";
-import { cachedElements, panel } from "./state";
+import { cachedElements } from "./state";
+import { storageGet } from "./platform/storage";
 import {
+	SESSION_SNAPSHOT_PREFIX,
 	evictOldestSnapshots,
-	storageGet,
 	storageSetDetailed,
-} from "./platform/storage";
-import { baseKey, fingerprint, withOccurrences } from "./core/fingerprint";
+} from "./platform/storageWrites";
+import { baseKey, fingerprint } from "./core/fingerprint";
 import { computeRounds } from "./core/rounds";
 import { deletedMessageKeys, tombstoneKey } from "./rounds";
 
@@ -87,6 +90,17 @@ function scheduleSnapshotTrim(): void {
 	void evictOldestSnapshots();
 }
 
+/** Narrows unknown storage payloads to the snapshot shape saveToStorage writes. */
+function isSessionSnapshot(value: unknown): value is {
+	messages: SidebarMessage[];
+	rounds?: SidebarRound[];
+	sessionId: string;
+} {
+	if (typeof value !== "object" || value === null) return false;
+	const v = value as { messages?: unknown; sessionId?: unknown };
+	return Array.isArray(v.messages) && typeof v.sessionId === "string";
+}
+
 // ─── Conversation store ─────────────────────────────────────────────────────────────
 
 export const conversationStore = {
@@ -127,7 +141,7 @@ export const conversationStore = {
 	 */
 	async saveToStorage(): Promise<boolean> {
 		if (!this.sessionId || this.messages.length === 0) return false;
-		const key = `edge-ai-sidebar:session:${this.sessionId}`;
+		const key = SESSION_SNAPSHOT_PREFIX + this.sessionId;
 		const payload = {
 			messages: this.messages.map(({ domId: _domId, ...rest }) => rest),
 			rounds: this.rounds,
@@ -158,12 +172,10 @@ export const conversationStore = {
 		sessionId: string,
 	): Promise<{ msgs: number; rounds: number } | null> {
 		if (!sessionId) return null;
-		const key = `edge-ai-sidebar:session:${sessionId}`;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const raw = (await storageGet(key)) as any;
+		const key = SESSION_SNAPSHOT_PREFIX + sessionId;
+		const raw = await storageGet(key);
 		if (
-			!raw ||
-			!raw.messages ||
+			!isSessionSnapshot(raw) ||
 			raw.messages.length === 0 ||
 			raw.sessionId !== sessionId
 		) {
@@ -182,67 +194,9 @@ export const conversationStore = {
 		this.rounds = (raw.rounds ?? []) as SidebarRound[];
 		this.lastOrigin = "bootstrap";
 		bindDomAnchors();
-		console.log(
-			`[AI Sidebar] persistence: restored ${this.messages.length} msgs, ${this.rounds.length} rounds`,
-		);
 		return { msgs: this.messages.length, rounds: this.rounds.length };
 	},
 };
-
-// ─── Merge helpers ─────────────────────────────────────────────────────────────────
-
-/** Add a message to the store if not already present (by content + occurrence). */
-function upsertMessage(msg: SidebarMessage): boolean {
-	const base = baseKey(msg);
-	const occ = msg.occurrence ?? 0;
-	msg.fingerprint = base;
-	msg.occurrence = occ;
-
-	// #15: tombstoned messages never come back, however often the DOM
-	// re-extracts them.
-	if (deletedMessageKeys.has(tombstoneKey(base, occ))) return false;
-
-	const existing = conversationStore.messages.find(
-		(m) => baseKey(m) === base && (m.occurrence ?? 0) === occ,
-	);
-	if (existing) {
-		// Merge: preserve existing domId even if new source doesn't have it.
-		if (!existing.domId && msg.domId) existing.domId = msg.domId;
-		// #15: a user edit wins over every re-extract — the overlay is keyed
-		// by the ORIGINAL fingerprint, which is exactly what the DOM returns.
-		if (existing.edited) return false;
-		// Prefer capture origin over dom origin.
-		if (msg.origin === "capture" && existing.origin !== "capture") {
-			existing.content = msg.content;
-			existing.capturedAt = msg.capturedAt;
-			existing.origin = "capture";
-		}
-		return false; // not new
-	}
-
-	conversationStore.messages.push(msg);
-	return true; // was new
-}
-
-// ─── Capture: add captured messages to store ───────────────────────────────────────
-
-export function addCapturedMessage(msg: SidebarMessage): boolean {
-	msg.origin = "capture";
-	// Capture arrives one message at a time, so its occurrence index is the
-	// number of already-merged capture messages with the same content. That
-	// lines up with the DOM's own numbering for the normal case; if the hook
-	// installed late and missed earlier repeats, the worst case is that this
-	// message merges into the wrong occurrence and keeps DOM text instead of
-	// capture text — no message or round is lost.
-	const base = fingerprint(msg.content);
-	let n = 0;
-	for (const m of conversationStore.messages) {
-		if (m.origin === "capture" && baseKey(m) === base) n++;
-	}
-	msg.fingerprint = base;
-	msg.occurrence = n;
-	return upsertMessage(msg);
-}
 
 // ─── Anchor binding: bind DOM elements to canonical messages by fingerprint ─────────
 
@@ -281,85 +235,6 @@ export function bindDomAnchors() {
 
 export function rebuildRounds() {
 	conversationStore.rounds = computeRounds(conversationStore.messages);
-}
-
-// ─── Full refresh: merge all sources and rebuild ───────────────────────────────────
-
-export function refreshStore(opts: {
-	bootstrap?: SidebarMessage[];
-	capture?: SidebarMessage[];
-	dom?: SidebarMessage[];
-	bindAnchors?: boolean;
-}) {
-	const { bootstrap = [], capture = [], dom = [], bindAnchors = true } = opts;
-	const hadDom = dom.length > 0;
-
-	// P3 fix: skip if nothing new to add (avoids O(n) rebuildRounds on every call).
-	if (bootstrap.length === 0 && capture.length === 0 && dom.length === 0) {
-		return;
-	}
-
-	// Priority merge: bootstrap → capture → dom. Each source is numbered
-	// independently, so repeats inside one source survive while the same message
-	// seen by two sources still merges.
-	for (const m of withOccurrences(bootstrap)) {
-		upsertMessage({ ...m, origin: "bootstrap" });
-	}
-	for (const m of withOccurrences(capture)) {
-		upsertMessage({ ...m, origin: "capture" });
-	}
-	for (const m of withOccurrences(dom)) {
-		upsertMessage({
-			...m,
-			role: m.role === "system" ? "assistant" : m.role,
-			origin: "dom",
-		});
-	}
-
-	// Sprint 3.2: always bind anchors to keep DOM ↔ store in sync (even if no new messages).
-	if (bindAnchors) bindDomAnchors();
-
-	// Compute rounds only when DOM content changed (P3).
-	if (bootstrap.length > 0 || capture.length > 0 || hadDom) {
-		rebuildRounds();
-	}
-
-	// Set lastOrigin to the highest-priority origin that contributed.
-	if (capture.length > 0) conversationStore.lastOrigin = "capture";
-	else if (bootstrap.length > 0) conversationStore.lastOrigin = "bootstrap";
-	else if (dom.length > 0) conversationStore.lastOrigin = "dom";
-}
-
-// ─── Local message edit (#15) ──────────────────────────────────────────────────
-
-/**
- * Replace one message's content with the user's correction. The fingerprint
- * deliberately still keys the DOM original, so re-extracts merge into this
- * message (and lose to the overlay via upsertMessage) instead of duplicating
- * it, and DOM anchors keep binding. Returns false when the id is unknown or
- * the text is empty/unchanged.
- *
- * Extension-visible only — arena.ai itself is never touched (it exposes no
- * message edit API; help.arena.ai documents session delete only).
- */
-export function editMessageContent(
-	messageId: string,
-	newContent: string,
-): boolean {
-	const msg = conversationStore.messages.find((m) => m.id === messageId);
-	const trimmed = newContent.trim();
-	if (!msg || !trimmed || trimmed === msg.content) return false;
-	if (!msg.edited) msg.editedFrom = msg.content;
-	msg.content = trimmed;
-	msg.edited = true;
-	msg.editedAt = Date.now();
-	rebuildRounds();
-	void conversationStore.saveToStorage();
-	// renderKey compares round ids, which an edit does not move — without this
-	// the fast path would swallow the re-render and the row would show stale
-	// text until something else changed.
-	panel.lastRenderKey = "";
-	return true;
 }
 
 /**

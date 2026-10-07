@@ -64,8 +64,6 @@ export const UNLAYERED = new Set([
 	"src/capture.ts",
 	"src/historyTitles.ts",
 	"src/titleResolver.ts",
-	"src/ui/panel.ts",
-	"src/ui/styles.ts",
 ]);
 
 export function layerOf(file: string): Layer {
@@ -139,25 +137,24 @@ export const KNOWN_DEBT: ReadonlyArray<{
 ];
 
 /**
- * Largest a single src/ file may get. Measured at the time this was written:
- * storage.ts 414, conversationStore.ts 379, extract.ts 365, sessions.ts 314,
- * arenaSidebar.ts 309, content.ts 309. The layering plan's acceptance criteria
- * claimed "files over 300 lines: 0"; that had already rotted by 6 files, which
- * is precisely why a number in a document has to become a number in a gate.
- * 420 = the worst file today plus 6 lines of slack, and the slack is the only
- * gift: split a file, lower the ceiling, never the reverse.
+ * Largest a single src/ file may get. Track A split the three giants
+ * (storage.ts 414 -> reads + storageWrites.ts, conversationStore.ts 379 ->
+ * store + conversationSync.ts, extract.ts 365 -> scan + extractCollect.ts)
+ * and deleted the two ui barrels, so the worst file today is
+ * ui/arenaSidebar.ts at 310 lines. 315 = that plus 5 lines of slack, and the
+ * slack is the only gift: split a file, lower the ceiling, never the reverse.
  */
-export const FILE_LINES_MAX = 420;
+export const FILE_LINES_MAX = 315;
 
 /**
- * Inbound edges into UNLAYERED files. Measured at the time this gate was
- * written: 50 (state.ts 14, conversationStore.ts 9, rounds.ts 8, extract.ts 4,
- * capture.ts 4, historyTitles.ts 3, titleResolver.ts 3, ui/styles.ts 3,
- * ui/panel.ts 2). That is the size of the migration debt the layering plan left
- * behind, and it is a CEILING, not a target: land one module in its layer, drop
- * the number, and the next person cannot quietly add a 51st edge.
+ * Inbound edges into UNLAYERED files. 45 as of Track A1 (state.ts 14,
+ * conversationStore.ts 9, rounds.ts 8, extract.ts 4, capture.ts 4,
+ * historyTitles.ts 3, titleResolver.ts 3); the two ui barrels were deleted in
+ * A1. That is the size of the migration debt the layering plan left behind,
+ * and it is a CEILING, not a target: land one module in its layer, drop the
+ * number, and the next person cannot quietly add a 46th edge.
  */
-export const ROOT_IN_EDGE_MAX = 50;
+export const ROOT_IN_EDGE_MAX = 45;
 
 // Identifiers that must never appear in runtime code under src/core/**: the
 // point of core is that it is testable and reasoned about without a browser.

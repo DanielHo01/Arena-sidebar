@@ -4,11 +4,16 @@
 import { conversationStore } from "../../conversationStore";
 import { panel } from "../../state";
 import { isSessionRoute } from "../../platform/route";
-import { ICON_X_SVG, UI_STYLES } from "../styles";
+import { ICON_X_SVG } from "../icons";
+import { PANEL_BASE_CSS } from "../styles/base";
+import { PANEL_LIST_CSS } from "../styles/list";
 import { exportConversation, summarizeRounds } from "../modals";
 import { cycleThemeMode } from "../../features/theme";
 import { THEME_GLYPHS } from "../../platform/theme";
 import { getStorageUsage } from "../../platform/storage";
+
+/** Every style the shadow-DOM panel and FAB need, in one string. */
+const UI_STYLES = PANEL_BASE_CSS + PANEL_LIST_CSS;
 
 // ─── Panel skeleton ─────────────────────────────────────────────────────────────────────
 

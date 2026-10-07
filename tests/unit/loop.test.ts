@@ -34,8 +34,10 @@ const store = vi.hoisted(() => ({
 
 vi.mock("../../src/conversationStore", () => ({
 	conversationStore: store,
-	refreshStore: mocks.refreshStore,
 	dropTombstonedMessages: vi.fn(() => false),
+}));
+vi.mock("../../src/conversationSync", () => ({
+	refreshStore: mocks.refreshStore,
 }));
 vi.mock("../../src/extract", () => ({
 	extractMessages: mocks.extractMessages,

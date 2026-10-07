@@ -16,8 +16,8 @@ import { panel, timers } from "../state";
 import {
 	conversationStore,
 	dropTombstonedMessages,
-	refreshStore,
 } from "../conversationStore";
+import { refreshStore } from "../conversationSync";
 import { extractMessages } from "../extract";
 import { pollCaptures } from "../capture";
 import { isPreScrollActive, startPreScroll } from "../features/prescroll";
@@ -136,6 +136,13 @@ function extractAndRefresh(hooks: LoopHooks, bindAnchors: boolean): void {
  * P2: observes only the chat container, not the whole document.body. Cascade
  * fallback precise → main → body, so a structural change in Arena still lands.
  */
+/** MutationObserver debounce: Arena typing fires dense characterData bursts. */
+const DOM_DEBOUNCE_MS = 800;
+/** Capture-dataset poll while a chat streams. */
+const CAPTURE_POLL_MS = 2000;
+/** Full DOM re-scan for messages the observer path missed. */
+const RESCAN_MS = 30000;
+
 export function startDomLoop(hooks: LoopHooks): Disposer {
 	if (observer) observer.disconnect();
 	if (sidebarObserver) sidebarObserver.disconnect();
@@ -165,8 +172,8 @@ export function startDomLoop(hooks: LoopHooks): Disposer {
 			timers.debounce = setTimeout(() => {
 				isFirstRender = false;
 				extractAndRefresh(hooks, true);
-			}, 800);
-		}, 800);
+			}, DOM_DEBOUNCE_MS);
+		}, DOM_DEBOUNCE_MS);
 	});
 	const chatContainer = queryScrollContainer();
 	const target =
@@ -214,11 +221,11 @@ export function startPeriodicLoop(hooks: LoopHooks): Disposer {
 	}
 	timers.pollInterval = setInterval(() => {
 		if (!panel.isDragging) pollCaptures();
-	}, 2000);
+	}, CAPTURE_POLL_MS);
 	timers.refreshInterval = setInterval(() => {
 		if (panel.isDragging) return;
 		extractAndRefresh(hooks, false);
-	}, 30000);
+	}, RESCAN_MS);
 	return () => {
 		if (timers.pollInterval !== null) clearInterval(timers.pollInterval);
 		if (timers.refreshInterval !== null) clearInterval(timers.refreshInterval);
