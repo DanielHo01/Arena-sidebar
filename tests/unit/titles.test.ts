@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // Real-source test: session title resolution (the "title three-source" fix).
 // Imports the actual production logic from src/titleResolver.ts.
 // Migrated verbatim from scripts/test-src-title-resolution.ts (6 assertions).

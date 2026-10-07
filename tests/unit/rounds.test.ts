@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // Real-source test: round grouping via computeRounds (actual production logic).
 // Migrated verbatim from scripts/test-src-rounds.ts (10 assertions).
 import { describe, it, expect } from "vitest";

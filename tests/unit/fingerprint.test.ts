@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // core/fingerprint.ts — the pure content-keying primitives.
 //
 // These decide whether two messages are "the same message". Getting them wrong

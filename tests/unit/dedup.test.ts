@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Pure logic / stubbed chrome: no DOM is touched, so this file skips the
+// jsdom boot that the default environment pays for every test file.
 // Phase 1 bug fix: the dedup fingerprint was content-only
 // ("fp-" + length + "-" + first 80 chars), so a user who genuinely sent the
 // same short message twice had those turns collapsed into one.
