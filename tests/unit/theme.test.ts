@@ -61,17 +61,40 @@ async function flush(): Promise<void> {
 	for (let i = 0; i < 4; i++) await Promise.resolve();
 }
 
-function stubMatchMedia(matches: boolean): () => void {
+type MqStub = {
+	matches: boolean;
+	addEventListener: (type: string, fn: () => void) => void;
+	removeEventListener: (type: string, fn: () => void) => void;
+	/** Registered "change" handlers — the only way a test can fire them. */
+	changes: Array<() => void>;
+	unbinds: number;
+};
+
+/** Replace window.matchMedia and KEEP the handlers the module registers, so a
+ * test can fire a change event instead of depending on some other file's
+ * timing to cover the listener body. */
+function stubMatchMedia(matches: boolean): { mq: MqStub; restore: () => void } {
 	const prev = window.matchMedia;
-	// @ts-expect-error — minimal stub is enough for detectTheme + setupTheme.
-	window.matchMedia = () => ({
+	const mq: MqStub = {
 		matches,
-		addEventListener: () => {},
-		removeEventListener: () => {},
-	});
-	return () => {
-		if (prev) window.matchMedia = prev;
-		else delete (window as { matchMedia?: unknown }).matchMedia;
+		changes: [],
+		unbinds: 0,
+		addEventListener: (_type, fn) => {
+			mq.changes.push(fn);
+		},
+		removeEventListener: () => {
+			mq.unbinds++;
+			mq.changes.length = 0;
+		},
+	};
+	// @ts-expect-error — minimal stub is enough for detectTheme + setupTheme.
+	window.matchMedia = () => mq;
+	return {
+		mq,
+		restore: () => {
+			if (prev) window.matchMedia = prev;
+			else delete (window as { matchMedia?: unknown }).matchMedia;
+		},
 	};
 }
 
@@ -105,7 +128,7 @@ describe("detectTheme", () => {
 		expect(detectTheme("auto")).toBe("dark");
 
 		root().removeAttribute("data-theme");
-		const restore = stubMatchMedia(true);
+		const { restore } = stubMatchMedia(true);
 		expect(detectTheme("auto")).toBe("dark");
 		restore();
 
@@ -119,7 +142,11 @@ describe("detectTheme", () => {
 		};
 		expect(() => detectTheme("auto")).not.toThrow();
 		expect(detectTheme("auto")).toBe("light");
+		// The else branch is the whole point: jsdom ships WITHOUT matchMedia,
+		// so without it the throwing stub leaks into whatever test runs next —
+		// which is exactly how theme.ts coverage used to depend on test order.
 		if (prev) window.matchMedia = prev;
+		else delete (window as { matchMedia?: unknown }).matchMedia;
 	});
 });
 
@@ -174,6 +201,10 @@ describe("setupTheme", () => {
 	let dispose: () => void;
 	let storage: ReturnType<typeof fakeBackend>;
 	let listeners: Array<(changes: unknown, area: string) => void>;
+	let media: { mq: MqStub; restore: () => void };
+
+	const hostTheme = () =>
+		document.getElementById("__edge_ai_sidebar_host")!.getAttribute(THEME_ATTR);
 
 	beforeEach(() => {
 		document.body.innerHTML = "";
@@ -183,6 +214,12 @@ describe("setupTheme", () => {
 		root().classList.remove("dark", "light");
 		root().removeAttribute("data-theme");
 		panel.themeMode = "auto";
+
+		// The OS starts light. Installed BEFORE setupTheme so the module
+		// registers its "change" listener against this stub every time —
+		// coverage of that registration used to depend on which test file the
+		// scheduler happened to run first, because nothing here stubbed it.
+		media = stubMatchMedia(false);
 
 		storage = fakeBackend({ [THEME_KEY]: "dark" });
 		setStorageBackend(storage.backend);
@@ -205,6 +242,7 @@ describe("setupTheme", () => {
 
 	afterEach(() => {
 		dispose();
+		media.restore();
 		setStorageBackend(null);
 		panel.themeMode = "auto";
 		vi.unstubAllGlobals();
@@ -289,6 +327,46 @@ describe("setupTheme", () => {
 		expect(listeners.length).toBeGreaterThan(0);
 		dispose();
 		expect(listeners).toHaveLength(0);
+	});
+
+	it("re-resolves auto when the OS flips its preference", async () => {
+		await flush();
+		cycleThemeMode(); // dark → auto (page and OS still light)
+		await flush();
+		expect(hostTheme()).toBe("light");
+		expect(media.mq.changes.length).toBeGreaterThan(0);
+
+		media.mq.matches = true; // the OS flips to dark…
+		for (const onChange of media.mq.changes) onChange(); // …and tells us
+		expect(hostTheme()).toBe("dark");
+	});
+
+	it("a manual mode is NOT overridden by the OS", async () => {
+		await flush(); // persisted "dark" adopted
+		expect(panel.themeMode).toBe("dark");
+
+		media.mq.matches = false; // the OS says light…
+		for (const onChange of media.mq.changes) onChange(); // …nobody listens
+		expect(hostTheme()).toBe("dark");
+	});
+
+	it("unregisters its matchMedia listener on dispose", () => {
+		expect(media.mq.changes.length).toBeGreaterThan(0);
+		dispose();
+		expect(media.mq.unbinds).toBeGreaterThan(0);
+	});
+
+	it("survives a matchMedia that throws during setup", () => {
+		window.matchMedia = () => {
+			throw new Error("blocked by hardened page");
+		};
+		let second: () => void = () => {};
+		expect(() => {
+			second = setupTheme();
+		}).not.toThrow();
+		second();
+		// afterEach's media.restore() puts back whatever beforeEach found, so
+		// the throwing stub never escapes this test.
 	});
 });
 

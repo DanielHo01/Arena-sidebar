@@ -2,7 +2,7 @@
 
 > **版本**: 0.2.0 | **构建大小**: 74.1 KB / gzip 23.3 KB（content script）+ 1.9 KB（inject hook）
 >
-> **代码规模**: `src/` 49 个 `.ts` / 7,153 行 · **测试**: 42 文件 / 747 用例 · **门禁**: 见 [docs/architecture.md](./docs/architecture.md)
+> **代码规模**: `src/` 49 个 `.ts` / 7,153 行 · **测试**: 42 文件 / 751 用例 · **门禁**: 见 [docs/architecture.md](./docs/architecture.md)
 
 Edge 浏览器扩展：在 arena.ai 聊天页面注入浮动按钮，**一键跳转到任意轮次对话**，支持导出、摘要生成、标题自定义等功能。
 
@@ -130,7 +130,7 @@ D:\edge-ai-sidebar\
 │   ├── __fixtures__/arenaDom.ts  Arena DOM 骨架，无 .test.ts 后缀故被 include 跳过
 │   ├── __fixtures__/probes/      真站 DOM 合同的可重放快照（probe:check 对账）
 │   ├── e2e/                    真 Chromium + 真 dist/ 的 13 步行为测试
-│   └── unit/                   42 个测试文件，747 个用例
+│   └── unit/                   42 个测试文件，751 个用例
 │
 ├── scripts/
 │   ├── arena-dump.js           浏览器控制台里跑的页面结构抓取工具
@@ -256,7 +256,7 @@ JSON 结构包含：sessionId、url、exportedAt、rounds（含 user/responses�
 ## 自动化测试
 
 ```bash
-npm test                      # 全套 Vitest（42 文件 / 747 用例），含 DOM 合同快照重放
+npm test                      # 全套 Vitest（42 文件 / 751 用例），含 DOM 合同快照重放
 npm run arch:check            # 分层方向 + 未分层耦合上限 + 文件行数上限
 npm run test:coverage         # 同上，带覆盖率与按目录阈值棘轮
 npm run gen:probe             # 从 arenaContract.ts 生成 scripts/arena-probe.js
@@ -269,7 +269,7 @@ npm run probe:check           # CI 用：探针与合同不同步则失败
 
 **当前状态**（2026-10-07 实测，改数字请连着 `vitest.config.ts` 一起改）：
 
-- ✅ 42 个测试文件 / 747 个用例，`sequence.shuffle` 常开（用例顺序随机化）
+- ✅ 42 个测试文件 / 751 个用例，`sequence.shuffle` 常开（用例顺序随机化）
 - ✅ 整体覆盖率 94.99% 语句 / 86.2% 分支 / 95.96% 函数 / 96.63% 行
 - ✅ 按目录棘轮：全局（94/85/95/96）、`src/core/**`（99/90/100/100）、
   `src/platform/**`（96/89/91/99）、`src/app/**`（96/94/87/98）、
@@ -334,7 +334,7 @@ document.getElementById("__edge_ai_sidebar_host").dataset
 | `npm run arch:check` | 依赖方向、循环依赖、`chrome.*` 越界、`core/` 碰 DOM、未分层耦合数、单文件行数 | `scripts/check-layers.ts` 里的常量 |
 | `npm run typecheck` | `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | `tsconfig.app.json` |
 | `npm run probe:check` | DOM 合同与生成的探针不同步 | `src/platform/arenaContract.ts` |
-| `npm test` | 747 用例 + 覆盖率地板 | `vitest.config.ts` `thresholds` |
+| `npm test` | 751 用例 + 覆盖率地板 | `vitest.config.ts` `thresholds` |
 | `npm run build` + 预算 | content bundle 超过 75,000 B / gzip 25,000 B | `.github/workflows/ci.yml` |
 | `npm run test:e2e` | 真 Chromium + 真 `dist/` 的 13 步行为 | `tests/e2e/run.mjs` |
 
