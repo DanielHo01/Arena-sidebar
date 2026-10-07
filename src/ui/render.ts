@@ -16,18 +16,18 @@ import { hiddenRoundIds } from "../rounds";
 import { renderKey } from "../core/renderKey";
 import { isSessionRoute } from "../platform/route";
 import { detectBattleMode } from "../platform/arenaDom";
+import { HOST_ELEMENT_ID } from "../features/theme";
 import { buildFab } from "./fab";
+import { ensurePanelSkeleton, ensureStyles } from "./panel/skeleton";
+import { reconcileList } from "./panel/list";
 import {
-	ensurePanelSkeleton,
-	ensureStyles,
-	reconcileList,
 	refreshCurrentHighlight,
 	setupScrollHighlight,
-} from "./panel";
+} from "./panel/highlight";
 
 /** Mirror panel state onto the host element so e2e tests can assert on it. */
 function syncHostAttributes(rounds: SidebarRound[], msgCount: number): void {
-	const host = document.getElementById("__edge_ai_sidebar_host");
+	const host = document.getElementById(HOST_ELEMENT_ID);
 	if (!host) return;
 	host.setAttribute("data-ai-sidebar-open", panel.isOpen ? "1" : "0");
 	host.setAttribute(

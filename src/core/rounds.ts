@@ -10,6 +10,11 @@
 
 import type { SidebarMessage, SidebarRound } from "../types";
 
+/** Display truncation widths (characters) for round titles and previews. */
+const ROUND_TITLE_LEN = 80;
+const USER_PREVIEW_LEN = 60;
+const ASSISTANT_PREVIEW_LEN = 100;
+
 /**
  * A round opened by an assistant message that precedes any user message.
  *
@@ -19,12 +24,12 @@ import type { SidebarMessage, SidebarRound } from "../types";
 function makeLeadRound(lead: SidebarMessage, index: number): SidebarRound {
 	return {
 		id: lead.id,
-		title: lead.content.slice(0, 80) || "(开场助手消息)",
+		title: lead.content.slice(0, ROUND_TITLE_LEN) || "(开场助手消息)",
 		messageCount: 1,
 		index,
 		hasAnchor: !!lead.domId,
 		userPreview: undefined,
-		assistantPreview: lead.content.slice(0, 100),
+		assistantPreview: lead.content.slice(0, ASSISTANT_PREVIEW_LEN),
 		assistantCount: 1,
 		edited: lead.edited || undefined,
 		hasUserTurn: false,
@@ -48,9 +53,11 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 		// caller already set explicitly. The lead-assistant round sets assistantPreview
 		// and assistantCount by hand; currentFirst*/currentAssistantCount are still
 		// null/0 at that point, so plain assignment used to wipe them back.
-		r.userPreview ??= currentFirstUser?.content.slice(0, 60) || undefined;
+		r.userPreview ??=
+			currentFirstUser?.content.slice(0, USER_PREVIEW_LEN) || undefined;
 		r.assistantPreview ??=
-			currentFirstAssistant?.content.slice(0, 100) || undefined;
+			currentFirstAssistant?.content.slice(0, ASSISTANT_PREVIEW_LEN) ||
+			undefined;
 		r.assistantCount ??= currentAssistantCount;
 		// #15: the lead round sets both by hand (above); user rounds always
 		// have a user turn by construction. `|| undefined` keeps unedited
@@ -83,7 +90,7 @@ export function computeRounds(msgs: SidebarMessage[]): SidebarRound[] {
 			currentHasEdited = false;
 			current = {
 				id: msg.id,
-				title: msg.content.slice(0, 80),
+				title: msg.content.slice(0, ROUND_TITLE_LEN),
 				messageCount: 0,
 				index: roundIdx,
 				hasAnchor: false,

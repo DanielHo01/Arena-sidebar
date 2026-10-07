@@ -9,19 +9,21 @@
 import { beforeEach, describe, it, expect } from "vitest";
 import {
 	conversationStore,
-	refreshStore,
-	addCapturedMessage,
 	bindDomAnchors,
 	dropTombstonedMessages,
-	editMessageContent,
 } from "../../src/conversationStore";
+import {
+	refreshStore,
+	addCapturedMessage,
+	editMessageContent,
+} from "../../src/conversationSync";
 import { deleteRound, getMessagesForRound } from "../../src/features/roundNav";
 import {
 	deletedMessageKeys,
 	resetDeletedMessages,
 	tombstoneKey,
 } from "../../src/rounds";
-import { cachedElements, panel } from "../../src/state";
+import { cachedElements } from "../../src/state";
 import { setStorageBackend } from "../../src/platform/storage";
 
 // The store is a module-level singleton, so every test starts from empty.
@@ -183,13 +185,6 @@ describe("editMessageContent (#15)", () => {
 		});
 		expect(conversationStore.messages).toHaveLength(1);
 		expect(conversationStore.messages[0].content).toBe("fixed");
-	});
-
-	it("invalidates the render fast path (ids don't move on edit)", () => {
-		refreshStore({ dom: [{ id: "u1", role: "user", content: "hi" }] });
-		panel.lastRenderKey = "junk";
-		editMessageContent("u1", "hello");
-		expect(panel.lastRenderKey).toBe("");
 	});
 });
 

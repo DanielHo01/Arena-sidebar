@@ -16,11 +16,15 @@
 
 import type { Disposer } from "../types";
 import { detectTheme, nextThemeMode, type HostTheme } from "../platform/theme";
-import { onStorageChanged, storageGet, storageSet } from "../platform/storage";
+import { onStorageChanged, storageGet } from "../platform/storage";
+import { storageSet } from "../platform/storageWrites";
 import { panel } from "../state";
 
 export const THEME_KEY = "themeMode";
 export const THEME_ATTR = "data-ai-sidebar-theme";
+
+/** Our own shadow-host element id — created by content.ts, read here and by ui/render. */
+export const HOST_ELEMENT_ID = "__edge_ai_sidebar_host";
 
 /** Custom properties handed to light-DOM inline styles in dark mode. The
  * prefix keeps them from colliding with Arena's own tokens. In light mode
@@ -37,7 +41,7 @@ function isThemeMode(v: unknown): v is "auto" | "light" | "dark" {
 }
 
 export function applyTheme(theme: HostTheme): void {
-	const host = document.getElementById("__edge_ai_sidebar_host");
+	const host = document.getElementById(HOST_ELEMENT_ID);
 	host?.setAttribute(THEME_ATTR, theme);
 
 	const root = document.documentElement;

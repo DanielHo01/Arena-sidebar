@@ -4,8 +4,8 @@
 //   saveFabPosition — (x: number, y: number) => void
 
 import { fab, panel } from "../state";
-import { storageSet } from "../platform/storage";
-import { ICON_MESSAGE_SVG } from "./styles";
+import { storageSet } from "../platform/storageWrites";
+import { ICON_MESSAGE_SVG } from "./icons";
 
 let fabDragX = 0;
 let fabDragY = 0;

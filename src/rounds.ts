@@ -18,7 +18,8 @@
 // fingerprints so the next DOM re-extract cannot resurrect them. Tombstones
 // follow the same per-session key + cross-tab sync design as hidden flags.
 
-import { onStorageChanged, storageGet, storageSet } from "./platform/storage";
+import { onStorageChanged, storageGet } from "./platform/storage";
+import { storageSet } from "./platform/storageWrites";
 import type { Disposer } from "./types";
 
 export const hiddenRoundIds = new Set<string>();

@@ -22,7 +22,7 @@ import {
 	INBOX_ID,
 	setSessionCustomTitle,
 } from "../features/sessions";
-import { CONTEXT_MENU_CSS } from "./styles";
+import { CONTEXT_MENU_CSS } from "./styles/contextMenu";
 import { h } from "./dom";
 import { beginInlineRename } from "./inlineRename";
 

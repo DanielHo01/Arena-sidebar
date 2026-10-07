@@ -15,11 +15,8 @@
 // therefore disambiguates by *occurrence within the source stream* rather than
 // by content alone.
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-	addCapturedMessage,
-	conversationStore,
-	refreshStore,
-} from "../../src/conversationStore";
+import { conversationStore } from "../../src/conversationStore";
+import { addCapturedMessage, refreshStore } from "../../src/conversationSync";
 import { computeRounds } from "../../src/core/rounds";
 
 beforeEach(() => {

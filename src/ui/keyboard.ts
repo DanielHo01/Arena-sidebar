@@ -6,7 +6,7 @@
 
 import type { Disposer } from "../types";
 import { panel } from "../state";
-import { refreshCurrentHighlight } from "./panel";
+import { refreshCurrentHighlight } from "./panel/highlight";
 
 // ─── Keyboard shortcuts (C1) ───────────────────────────────────────────────────────────────
 // Alt+S        — toggle panel open/close

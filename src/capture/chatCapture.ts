@@ -9,7 +9,7 @@
 // re-exports, so importers are unchanged.
 
 import type { ChatRequest, ChatResponse, CapturedRound } from "../types";
-import { addCapturedMessage } from "../conversationStore";
+import { addCapturedMessage } from "../conversationSync";
 
 // ─── DOM dataset keys (written by inject-hook.js in main world) ──────────────────────
 //   document.documentElement.dataset.aiSideRequest   — chat requests

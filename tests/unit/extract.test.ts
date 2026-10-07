@@ -10,11 +10,10 @@ import {
 	ASSISTANT_MESSAGE_SELECTOR,
 	USER_MESSAGE_SELECTOR,
 	extractMessages,
-	extractText,
-	generateStableId,
 	getLastExtractStats,
 	resetExtractState,
 } from "../../src/extract";
+import { extractText, generateStableId } from "../../src/extractCollect";
 import { cachedElements } from "../../src/state";
 
 // jsdom reports every box as 0x0. The production extractor treats zero as

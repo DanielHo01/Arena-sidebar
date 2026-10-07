@@ -14,20 +14,22 @@
 // Plus getStorageUsage(), the header dot's data source.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	getStorageUsage,
+	setStorageBackend,
+	type StorageBackend,
+} from "../../src/platform/storage";
+import {
 	MAX_SESSION_SNAPSHOTS,
 	QUOTA_EVICT_BYTES,
 	QUOTA_EVICT_KEEP,
 	SESSION_SNAPSHOT_PREFIX,
 	SNAPSHOT_BYTES_BUDGET,
 	evictOldestSnapshots,
-	getStorageUsage,
 	isQuotaError,
 	onStorageWriteFailed,
-	setStorageBackend,
 	storageSetDetailed,
-	type StorageBackend,
 	type StorageWriteFailure,
-} from "../../src/platform/storage";
+} from "../../src/platform/storageWrites";
 
 const QUOTA_MESSAGE = "Resource::kQuotaBytes quota exceeded";
 
