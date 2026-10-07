@@ -1,4 +1,11 @@
 # Edge AI Sidebar — Implementation Plan (DEPRECATED)
+<!-- 历史快照：仅记录当时的决策与状态，不作为当前事实来源。 -->
+
+> ⚠️ **已归档 / 历史快照**。这是 v0.1 时代的重构计划，仓库已完成 Phase 0–10A，很多条目早已落地或作废。
+> 文中的行数、覆盖率、bundle 大小、任务清单等数字**已过期**——
+> 例如 `plan.md` 的验收标准 "files over 300 lines: 0" 在被写下时就不为真。
+> 当前架构、分层规则与门禁的出处见 [../architecture.md](../architecture.md)。
+
 
 > ⚠️ **此文档已过时** — v0.1 原始规划，描述的是早期 React + Side Panel 构想。
 >

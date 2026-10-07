@@ -2,7 +2,7 @@
 // persisted per session.
 //
 // History: hidden flags were a plain in-memory Set with no persistence and no
-// unhide control (docs/handoff-2026-09-07.md §5.1). That made ✕ an irreversible
+// unhide control (docs/archive/handoff-2026-09-07.md §5.1). That made ✕ an irreversible
 // action that a page refresh silently undid — and worse, round ids are not
 // unique per session (bootstrap messages get deterministic ids like "boot-3"
 // and round.id is simply msg.id), so a flag set in one session leaked into

@@ -1,4 +1,11 @@
 # Re-baseline: phase10a current architecture
+<!-- 历史快照：仅记录当时的决策与状态，不作为当前事实来源。 -->
+
+> ⚠️ **已归档 / 历史快照**。Phase 10A 死代码清理的当时快照（原 `docs/rebaseline-phase10a.md`）。
+> 文中的行数、覆盖率、bundle 大小、任务清单等数字**已过期**——
+> 例如 `plan.md` 的验收标准 "files over 300 lines: 0" 在被写下时就不为真。
+> 当前架构、分层规则与门禁的出处见 [../architecture.md](../architecture.md)。
+
 
 > 生成于 checkpoint `14b63f2`（tag `phase10a-build-green`）之后。
 > 目标读者：开发者。用途：固化当前真实架构，作为后续功能/清理/文档工作的基线。
